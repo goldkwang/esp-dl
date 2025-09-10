@@ -11,7 +11,8 @@
       "Bash(copy:*)",
       "Bash(ls:*)",
       "Bash(mkdir:*)",
-      "Bash(del \"C:\\Users\\goldk\\ESP-Camera\\esp-dl\\examples\\golf_ball_detect\\sdkconfig\")"
+      "Bash(del \"C:\\Users\\goldk\\ESP-Camera\\esp-dl\\examples\\golf_ball_detect\\sdkconfig\")",
+      "Bash(cmd.exe /c \"idf.py build\")"
     ],
     "deny": []
   }

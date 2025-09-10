@@ -1,0 +1,28 @@
+menu "Golf Ball Detect"
+    choice GOLF_BALL_DETECT_MODELS
+        prompt "Select golf ball detect models"
+        default FLASH_GOLF_BALL_99_4_MAP
+
+        config FLASH_GOLF_BALL_99_4_MAP
+            bool "golf_ball_99_4_mAP"
+    endchoice
+
+    choice GOLF_BALL_DETECT_MODEL_LOCATION
+        prompt "Select model storage location"
+        default GOLF_BALL_DETECT_MODEL_IN_FLASH_RODATA
+
+        config GOLF_BALL_DETECT_MODEL_IN_FLASH_RODATA
+            bool "Store the model in Flash RODATA"
+        config GOLF_BALL_DETECT_MODEL_IN_FLASH_PARTITION
+            bool "Store the model in a flash partition"
+        config GOLF_BALL_DETECT_MODEL_IN_SDCARD
+            bool "Store the model in a SDcard"
+    endchoice
+
+    config GOLF_BALL_DETECT_MODEL_SDCARD_DIR
+        string "Model file directory in SDCard"
+        depends on GOLF_BALL_DETECT_MODEL_IN_SDCARD
+        default "models"
+        help
+            Name of directory where model files will be kept.
+endmenu
