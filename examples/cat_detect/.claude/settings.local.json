@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(findstr:*)",
+      "Bash(cat:*)",
+      "Bash(rm:*)",
+      "Bash(python -m idf_tools:*)"
+    ],
+    "deny": []
+  }
+}
