@@ -139,8 +139,6 @@ static esp_err_t index_handler(httpd_req_t *req)
         // 페이지 로드시 버전 정보 가져오기
         window.onload = function() {
             updateVersion();
-            // 10초마다 이미지 자동 새로고침
-            setInterval(refreshImage, 10000);
         }
     </script>
 </body>
@@ -151,62 +149,51 @@ static esp_err_t index_handler(httpd_req_t *req)
     return httpd_resp_send(req, html, strlen(html));
 }
 
-// SD카드에서 이미지 읽어서 전송
+// 전역 변수로 처리된 이미지 저장
+static uint8_t *g_image_buffer = NULL;
+static size_t g_image_size = 0;
+
+// 이미지 버퍼 설정 함수
+void set_image_buffer(uint8_t *buffer, size_t size) {
+    if (g_image_buffer != NULL) {
+        free(g_image_buffer);
+    }
+    g_image_buffer = buffer;
+    g_image_size = size;
+}
+
+// 이미지 전송 핸들러
 static esp_err_t image_handler(httpd_req_t *req)
 {
-    // SD 카드 마운트
-    esp_err_t ret = bsp_sdcard_mount();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to mount SD card");
+    if (g_image_buffer == NULL || g_image_size == 0) {
+        ESP_LOGE(TAG, "No image available");
         httpd_resp_send_404(req);
-        return ESP_FAIL;
-    }
-    
-    // 이미지 파일 열기
-    FILE *f = fopen("/sdcard/cat_detection_result.jpg", "rb");
-    if (!f) {
-        ESP_LOGE(TAG, "Failed to open image file");
-        bsp_sdcard_unmount();
-        httpd_resp_send_404(req);
-        return ESP_FAIL;
-    }
-    
-    // 파일 크기 확인
-    fseek(f, 0, SEEK_END);
-    size_t file_size = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    
-    // 버퍼 할당
-    uint8_t *buf = (uint8_t*)malloc(file_size);
-    if (!buf) {
-        ESP_LOGE(TAG, "Failed to allocate buffer");
-        fclose(f);
-        bsp_sdcard_unmount();
-        httpd_resp_send_500(req);
-        return ESP_FAIL;
-    }
-    
-    // 파일 읽기
-    size_t read_size = fread(buf, 1, file_size, f);
-    fclose(f);
-    bsp_sdcard_unmount();
-    
-    if (read_size != file_size) {
-        ESP_LOGE(TAG, "Failed to read complete file");
-        free(buf);
-        httpd_resp_send_500(req);
         return ESP_FAIL;
     }
     
     // HTTP 헤더 설정
     httpd_resp_set_type(req, "image/jpeg");
-    httpd_resp_set_hdr(req, "Content-Disposition", "inline; filename=detection_result.jpg");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+    char content_length[16];
+    snprintf(content_length, sizeof(content_length), "%d", g_image_size);
+    httpd_resp_set_hdr(req, "Content-Length", content_length);
     
-    // 이미지 전송
-    esp_err_t res = httpd_resp_send(req, (const char *)buf, file_size);
-    free(buf);
+    // 이미지 전송 - 청크 단위로
+    size_t sent = 0;
+    size_t chunk_size = 4096;
+    while (sent < g_image_size) {
+        size_t to_send = ((g_image_size - sent) > chunk_size) ? chunk_size : (g_image_size - sent);
+        if (httpd_resp_send_chunk(req, (const char *)(g_image_buffer + sent), to_send) != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to send image chunk");
+            return ESP_FAIL;
+        }
+        sent += to_send;
+    }
     
-    return res;
+    // 청크 전송 종료
+    httpd_resp_send_chunk(req, NULL, 0);
+    
+    return ESP_OK;
 }
 
 // 버전 정보 핸들러
@@ -221,6 +208,9 @@ static esp_err_t start_webserver(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.lru_purge_enable = true;
+    config.max_open_sockets = 1;  // 단일 연결만 허용
+    config.recv_wait_timeout = 10;  // 수신 대기 시간 감소
+    config.send_wait_timeout = 10;  // 전송 대기 시간 감소
     
     ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
     

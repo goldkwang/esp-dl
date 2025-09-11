@@ -4,6 +4,7 @@
 #include "bsp/esp-bsp.h"
 #include "draw_detection.hpp"
 #include "wifi_server.hpp"
+#include <string.h>
 
 extern const uint8_t cat_jpg_start[] asm("_binary_cat_jpg_start");
 extern const uint8_t cat_jpg_end[] asm("_binary_cat_jpg_end");
@@ -35,18 +36,23 @@ extern "C" void app_main(void)
                  res.box[3]);
     }
     
-    // Save image with detection boxes to SD card
-    if (detect_results.size() > 0) {
-        ESP_LOGI(TAG, "Saving detection result to SD card...");
-        ESP_ERROR_CHECK(bsp_sdcard_mount());
-        
-        if (save_image_with_boxes_to_sdcard(img, detect_results, "cat_detection_result.jpg")) {
-            ESP_LOGI(TAG, "Detection result saved successfully!");
-        } else {
-            ESP_LOGE(TAG, "Failed to save detection result");
+    // Draw detection boxes on image
+    ESP_LOGI(TAG, "Drawing detection boxes on image...");
+    draw_detection_boxes(img, detect_results);
+    
+    // Convert to JPEG and set for WiFi display
+    ESP_LOGI(TAG, "Encoding image to JPEG...");
+    dl::image::jpeg_img_t jpeg_result = dl::image::sw_encode_jpeg(img, 0, 85);
+    
+    if (jpeg_result.data) {
+        ESP_LOGI(TAG, "Setting image buffer for web server (%d bytes)", jpeg_result.data_len);
+        // Copy data since set_image_buffer will own it
+        uint8_t *buffer_copy = (uint8_t*)malloc(jpeg_result.data_len);
+        if (buffer_copy) {
+            memcpy(buffer_copy, jpeg_result.data, jpeg_result.data_len);
+            set_image_buffer(buffer_copy, jpeg_result.data_len);
         }
-        
-        ESP_ERROR_CHECK(bsp_sdcard_unmount());
+        heap_caps_free(jpeg_result.data);
     }
     
     delete detect;
