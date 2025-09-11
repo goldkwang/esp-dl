@@ -96,16 +96,14 @@ void draw_detection_boxes(dl::image::img_t &img, const std::list<dl::detect::res
         ESP_LOGI(TAG, "Box %d - Original coordinates: (%d,%d) to (%d,%d), score: %.2f", 
                  box_index++, x1, y1, x2, y2, res.score);
         
-        // Calculate center and size
+        // Calculate center and size for square box
         int center_x = (x1 + x2) / 2;
         int center_y = (y1 + y2) / 2;
         int width = x2 - x1;
         int height = y2 - y1;
         
-        // Use the smaller dimension to make a square
-        int size = (width < height) ? width : height;
-        // Increase box size by 10% to better cover the golf ball
-        size = (int)(size * 1.1);
+        // Use average of width and height for square (compromise between min and max)
+        int size = (width + height) / 2;
         int half_size = size / 2;
         
         // Recalculate square box coordinates
@@ -120,7 +118,7 @@ void draw_detection_boxes(dl::image::img_t &img, const std::list<dl::detect::res
         if (x2 >= img.width) x2 = img.width - 1;
         if (y2 >= img.height) y2 = img.height - 1;
         
-        ESP_LOGI(TAG, "Drawing square box: (%d,%d) to (%d,%d), size: %dx%d", x1, y1, x2, y2, size, size);
+        ESP_LOGI(TAG, "Drawing square box (avg method): (%d,%d) to (%d,%d), size: %dx%d", x1, y1, x2, y2, size, size);
         
         // Draw horizontal lines (2 pixels thick)
         for (int x = x1; x <= x2; x++) {

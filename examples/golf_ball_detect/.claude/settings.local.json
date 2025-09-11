@@ -14,7 +14,8 @@
       "Bash(del \"C:\\Users\\goldk\\ESP-Camera\\esp-dl\\examples\\golf_ball_detect\\sdkconfig\")",
       "Bash(cmd.exe /c \"idf.py build\")",
       "Bash(dir C:UsersgoldkESP-Cameraesp-dlmodelsgolf_ball_detectmodelss3)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(python:*)"
     ],
     "deny": []
   }
