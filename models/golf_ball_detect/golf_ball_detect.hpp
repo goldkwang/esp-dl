@@ -18,7 +18,7 @@ public:
     GolfBallDetect(model_type_t model_type = model_type_t::GOLF_BALL_99_4_MAP);
     ~GolfBallDetect() { delete m_model; }
     
-    std::vector<dl::detect::result_t> &run(dl::image::img_t &img)
+    std::list<dl::detect::result_t> &run(dl::image::img_t &img)
     {
         return m_model->run(img);
     }

@@ -13,10 +13,13 @@ extern "C" void app_main(void)
     dl::image::jpeg_img_t jpeg_img = {.data = (void *)cat_jpg_start, .data_len = (size_t)(cat_jpg_end - cat_jpg_start)};
     auto img = dl::image::sw_decode_jpeg(jpeg_img, dl::image::DL_IMAGE_PIX_TYPE_RGB888);
 
+    ESP_LOGI(TAG, "Image decoded - Width: %d, Height: %d", img.width, img.height);
+    ESP_LOGI(TAG, "Creating CatDetect instance with golf ball model...");
+    
     CatDetect *detect = new CatDetect();
     auto &detect_results = detect->run(img);
     
-    ESP_LOGI(TAG, "Detected %d cat(s)", detect_results.size());
+    ESP_LOGI(TAG, "Detection complete. Found %d object(s)", detect_results.size());
     for (const auto &res : detect_results) {
         ESP_LOGI(TAG,
                  "[category: %d, score: %f, x1: %d, y1: %d, x2: %d, y2: %d]",
@@ -46,5 +49,5 @@ extern "C" void app_main(void)
     heap_caps_free(img.data);
 
 
-    ESP_LOGI(TAG, "Cat Detection v%s", VERSION_STRING);
+    ESP_LOGI(TAG, "Cat Detection %s", VERSION_STRING);
 }

@@ -45,7 +45,7 @@ ESPDet::ESPDet(const char *model_name)
 GolfBallDetect::GolfBallDetect(model_type_t model_type)
 {
     switch (model_type) {
-    case model_type_t::GOLF_BALL_99_4_MAP:
+    case GOLF_BALL_99_4_MAP:
 #if CONFIG_FLASH_GOLF_BALL_99_4_MAP || CONFIG_GOLF_BALL_DETECT_MODEL_IN_SDCARD
         m_model = new golf_ball_detect::ESPDet("golf_ball_99_4_mAP.espdl");
 #else

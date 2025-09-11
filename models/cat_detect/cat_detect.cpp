@@ -36,7 +36,8 @@ ESPDet::ESPDet(const char *model_name)
 #endif
     m_image_preprocessor->enable_letterbox({114, 114, 114});
     m_postprocessor = new dl::detect::ESPDetPostProcessor(
-        m_model, m_image_preprocessor, 0.25, 0.7, 10, {{8, 8, 4, 4}, {16, 16, 8, 8}, {32, 32, 16, 16}});
+        m_model, m_image_preprocessor, 0.05, 0.5, 10, {{8, 8, 4, 4}, {16, 16, 8, 8}, {32, 32, 16, 16}});
+    ESP_LOGI("cat_detect", "ESPDet initialized with confidence threshold: 0.05, NMS threshold: 0.5");
 }
 
 } // namespace cat_detect
@@ -46,14 +47,15 @@ CatDetect::CatDetect(model_type_t model_type)
     switch (model_type) {
     case model_type_t::ESPDET_PICO_224_224_CAT:
 #if CONFIG_FLASH_ESPDET_PICO_224_224_CAT || CONFIG_CAT_DETECT_MODEL_IN_SDCARD
-        m_model = new cat_detect::ESPDet("espdet_pico_224_224_cat.espdl");
+        ESP_LOGI("cat_detect", "Loading golf ball model: golf_ball_99_4_mAP.espdl");
+        m_model = new cat_detect::ESPDet("golf_ball_99_4_mAP.espdl");
 #else
         ESP_LOGE("cat_detect", "espdet_pico_224_224_cat is not selected in menuconfig.");
 #endif
         break;
     case model_type_t::ESPDET_PICO_416_416_CAT:
 #if CONFIG_FLASH_ESPDET_PICO_416_416_CAT || CONFIG_CAT_DETECT_MODEL_IN_SDCARD
-        m_model = new cat_detect::ESPDet("espdet_pico_416_416_cat.espdl");
+        m_model = new cat_detect::ESPDet("espdet_pico_224_224_cat.espdl");
 #else
         ESP_LOGE("cat_detect", "espdet_pico_416_416_cat is not selected in menuconfig.");
 #endif

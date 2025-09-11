@@ -30,7 +30,7 @@ if (NOT CONFIG_CAT_DETECT_MODEL_IN_SDCARD)
         list(APPEND models ${models_dir}/espdet_pico_224_224_cat.espdl)
     endif()
     if(CONFIG_FLASH_ESPDET_PICO_416_416_CAT)
-        list(APPEND models ${models_dir}/espdet_pico_416_416_cat.espdl)
+        list(APPEND models ${models_dir}/espdet_pico_224_224_cat.espdl)
     endif()
 
     set(pack_model_exe ${espdl_dir}/fbs_loader/pack_espdl_models.py)
