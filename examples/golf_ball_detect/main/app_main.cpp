@@ -9,8 +9,6 @@ const char *TAG = "cat_detect";
 
 extern "C" void app_main(void)
 {
-    ESP_LOGI(TAG, "Cat Detection v%s", VERSION_STRING);
-    
 #if CONFIG_CAT_DETECT_MODEL_IN_SDCARD
     ESP_ERROR_CHECK(bsp_sdcard_mount());
 #endif
@@ -35,4 +33,6 @@ extern "C" void app_main(void)
 #if CONFIG_CAT_DETECT_MODEL_IN_SDCARD
     ESP_ERROR_CHECK(bsp_sdcard_unmount());
 #endif
+
+    ESP_LOGI(TAG, "Cat Detection v%s", VERSION_STRING);
 }
