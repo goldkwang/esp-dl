@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include "bsp/esp-bsp.h"
 #include "draw_detection.hpp"
+#include "wifi_server.hpp"
 
 extern const uint8_t cat_jpg_start[] asm("_binary_cat_jpg_start");
 extern const uint8_t cat_jpg_end[] asm("_binary_cat_jpg_end");
@@ -55,4 +56,12 @@ extern "C" void app_main(void)
     ESP_LOGI(TAG, "\n========================================");
     ESP_LOGI(TAG, "   GOLF BALL DETECTION %s COMPLETE", VERSION_STRING);
     ESP_LOGI(TAG, "========================================\n\n");
+    
+    // Wait a bit before starting WiFi
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    
+    // Start WiFi server
+    ESP_LOGI(TAG, "Starting WiFi server...");
+    start_wifi_server();
+    ESP_LOGI(TAG, "System ready. Access web interface at http://192.168.0.11");
 }

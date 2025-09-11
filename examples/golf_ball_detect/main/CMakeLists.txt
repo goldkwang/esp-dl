@@ -2,7 +2,7 @@ set(src_dirs        ./)
 
 set(include_dirs    ./)
 
-set(requires        cat_detect esp_jpeg fatfs)
+set(requires        cat_detect esp_jpeg fatfs esp_wifi esp_http_server nvs_flash)
 
 if (IDF_TARGET STREQUAL "esp32s3")
     list(APPEND requires esp32_s3_eye_noglib
