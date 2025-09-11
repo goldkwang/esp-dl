@@ -34,10 +34,10 @@ ESPDet::ESPDet(const char *model_name)
     m_image_preprocessor = new dl::image::ImagePreprocessor(
         m_model, {0, 0, 0}, {255, 255, 255}, dl::image::DL_IMAGE_CAP_RGB565_BIG_ENDIAN);
 #endif
-    m_image_preprocessor->enable_letterbox({114, 114, 114});
+    // m_image_preprocessor->enable_letterbox({114, 114, 114}); // Disabled - use 480x160 directly
     m_postprocessor = new dl::detect::ESPDetPostProcessor(
-        m_model, m_image_preprocessor, 0.05, 0.5, 10, {{8, 8, 4, 4}, {16, 16, 8, 8}, {32, 32, 16, 16}});
-    ESP_LOGI("cat_detect", "ESPDet initialized with confidence threshold: 0.05, NMS threshold: 0.5");
+        m_model, m_image_preprocessor, 0.05, 0.25, 10, {{8, 8, 4, 4}, {16, 16, 8, 8}, {32, 32, 16, 16}});
+    ESP_LOGI("cat_detect", "ESPDet initialized - conf: 0.05, NMS: 0.25 (very strict), no letterbox");
 }
 
 } // namespace cat_detect

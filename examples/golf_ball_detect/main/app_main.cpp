@@ -10,6 +10,9 @@ const char *TAG = "cat_detect";
 
 extern "C" void app_main(void)
 {
+    ESP_LOGI(TAG, "\n\n========================================");
+    ESP_LOGI(TAG, "   GOLF BALL DETECTION %s START", VERSION_STRING);
+    ESP_LOGI(TAG, "========================================\n");
     dl::image::jpeg_img_t jpeg_img = {.data = (void *)cat_jpg_start, .data_len = (size_t)(cat_jpg_end - cat_jpg_start)};
     auto img = dl::image::sw_decode_jpeg(jpeg_img, dl::image::DL_IMAGE_PIX_TYPE_RGB888);
 
@@ -49,5 +52,7 @@ extern "C" void app_main(void)
     heap_caps_free(img.data);
 
 
-    ESP_LOGI(TAG, "Cat Detection %s", VERSION_STRING);
+    ESP_LOGI(TAG, "\n========================================");
+    ESP_LOGI(TAG, "   GOLF BALL DETECTION %s COMPLETE", VERSION_STRING);
+    ESP_LOGI(TAG, "========================================\n\n");
 }

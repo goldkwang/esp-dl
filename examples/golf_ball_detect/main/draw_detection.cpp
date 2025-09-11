@@ -59,59 +59,42 @@ void draw_detection_boxes(dl::image::img_t &img, const std::list<dl::detect::res
         }
     }
     
-    // Draw "V4" text in white
-    // V shape (for V5)
-    for (int i = 0; i < 8; i++) {
-        if (rect_y + 5 + i < img.height && rect_x + 15 + i/2 < img.width) {
-            int idx = ((rect_y + 5 + i) * img.width + (rect_x + 15 + i/2)) * 3;
-            ((uint8_t*)img.data)[idx] = 255;
-            ((uint8_t*)img.data)[idx + 1] = 255;
-            ((uint8_t*)img.data)[idx + 2] = 255;
-        }
-        if (rect_y + 5 + i < img.height && rect_x + 25 - i/2 < img.width) {
-            int idx = ((rect_y + 5 + i) * img.width + (rect_x + 25 - i/2)) * 3;
-            ((uint8_t*)img.data)[idx] = 255;
-            ((uint8_t*)img.data)[idx + 1] = 255;
-            ((uint8_t*)img.data)[idx + 2] = 255;
-        }
-    }
-    
-    // Number 5
-    // Vertical line
-    for (int y = 0; y < 15; y++) {
-        if (rect_y + 5 + y < img.height && rect_x + 35 < img.width) {
-            int idx = ((rect_y + 5 + y) * img.width + (rect_x + 35)) * 3;
-            ((uint8_t*)img.data)[idx] = 255;
-            ((uint8_t*)img.data)[idx + 1] = 255;
-            ((uint8_t*)img.data)[idx + 2] = 255;
-        }
-    }
-    // Horizontal line
-    for (int x = 0; x < 10; x++) {
-        if (rect_y + 10 < img.height && rect_x + 30 + x < img.width) {
-            int idx = ((rect_y + 10) * img.width + (rect_x + 30 + x)) * 3;
-            ((uint8_t*)img.data)[idx] = 255;
-            ((uint8_t*)img.data)[idx + 1] = 255;
-            ((uint8_t*)img.data)[idx + 2] = 255;
-        }
-    }
-    // Left diagonal
-    for (int i = 0; i < 6; i++) {
-        if (rect_y + 5 + i < img.height && rect_x + 30 + i < img.width) {
-            int idx = ((rect_y + 5 + i) * img.width + (rect_x + 30 + i)) * 3;
-            ((uint8_t*)img.data)[idx] = 255;
-            ((uint8_t*)img.data)[idx + 1] = 255;
-            ((uint8_t*)img.data)[idx + 2] = 255;
+    // Draw simple version indicator - filled circles for version number
+    // v6 = 6 white dots in 2 rows
+    for (int row = 0; row < 2; row++) {
+        for (int col = 0; col < 3; col++) {
+            int dot_x = rect_x + 10 + col * 15;
+            int dot_y = rect_y + 8 + row * 10;
+            
+            // Draw 3x3 white square for each dot
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    int px = dot_x + dx;
+                    int py = dot_y + dy;
+                    if (px >= 0 && px < img.width && py >= 0 && py < img.height) {
+                        int idx = (py * img.width + px) * 3;
+                        ((uint8_t*)img.data)[idx] = 255;
+                        ((uint8_t*)img.data)[idx + 1] = 255;
+                        ((uint8_t*)img.data)[idx + 2] = 255;
+                    }
+                }
+            }
         }
     }
     
     ESP_LOGI(TAG, "Version %s drawn on image", version);
     
+    ESP_LOGI(TAG, "Total detection results: %d", results.size());
+    
+    int box_index = 0;
     for (const auto &res : results) {
         int x1 = res.box[0];
         int y1 = res.box[1];
         int x2 = res.box[2];
         int y2 = res.box[3];
+        
+        ESP_LOGI(TAG, "Box %d - Original coordinates: (%d,%d) to (%d,%d), score: %.2f", 
+                 box_index++, x1, y1, x2, y2, res.score);
         
         // Calculate center and size
         int center_x = (x1 + x2) / 2;
@@ -121,6 +104,8 @@ void draw_detection_boxes(dl::image::img_t &img, const std::list<dl::detect::res
         
         // Use the smaller dimension to make a square
         int size = (width < height) ? width : height;
+        // Increase box size by 10% to better cover the golf ball
+        size = (int)(size * 1.1);
         int half_size = size / 2;
         
         // Recalculate square box coordinates
@@ -129,41 +114,59 @@ void draw_detection_boxes(dl::image::img_t &img, const std::list<dl::detect::res
         x2 = center_x + half_size;
         y2 = center_y + half_size;
         
+        // Ensure coordinates are within image bounds
+        if (x1 < 0) x1 = 0;
+        if (y1 < 0) y1 = 0;
+        if (x2 >= img.width) x2 = img.width - 1;
+        if (y2 >= img.height) y2 = img.height - 1;
+        
         ESP_LOGI(TAG, "Drawing square box: (%d,%d) to (%d,%d), size: %dx%d", x1, y1, x2, y2, size, size);
         
-        // Draw horizontal lines
+        // Draw horizontal lines (2 pixels thick)
         for (int x = x1; x <= x2; x++) {
             // Top line
-            if (y1 >= 0 && y1 < img.height && x >= 0 && x < img.width) {
-                int idx = (y1 * img.width + x) * 3;
-                ((uint8_t*)img.data)[idx] = r;
-                ((uint8_t*)img.data)[idx + 1] = g;
-                ((uint8_t*)img.data)[idx + 2] = b;
+            for (int thickness = 0; thickness < 2; thickness++) {
+                int y = y1 + thickness;
+                if (y >= 0 && y < img.height && x >= 0 && x < img.width) {
+                    int idx = (y * img.width + x) * 3;
+                    ((uint8_t*)img.data)[idx] = r;
+                    ((uint8_t*)img.data)[idx + 1] = g;
+                    ((uint8_t*)img.data)[idx + 2] = b;
+                }
             }
             // Bottom line
-            if (y2 >= 0 && y2 < img.height && x >= 0 && x < img.width) {
-                int idx = (y2 * img.width + x) * 3;
-                ((uint8_t*)img.data)[idx] = r;
-                ((uint8_t*)img.data)[idx + 1] = g;
-                ((uint8_t*)img.data)[idx + 2] = b;
+            for (int thickness = 0; thickness < 2; thickness++) {
+                int y = y2 - thickness;
+                if (y >= 0 && y < img.height && x >= 0 && x < img.width) {
+                    int idx = (y * img.width + x) * 3;
+                    ((uint8_t*)img.data)[idx] = r;
+                    ((uint8_t*)img.data)[idx + 1] = g;
+                    ((uint8_t*)img.data)[idx + 2] = b;
+                }
             }
         }
         
-        // Draw vertical lines
+        // Draw vertical lines (2 pixels thick)
         for (int y = y1; y <= y2; y++) {
             // Left line
-            if (y >= 0 && y < img.height && x1 >= 0 && x1 < img.width) {
-                int idx = (y * img.width + x1) * 3;
-                ((uint8_t*)img.data)[idx] = r;
-                ((uint8_t*)img.data)[idx + 1] = g;
-                ((uint8_t*)img.data)[idx + 2] = b;
+            for (int thickness = 0; thickness < 2; thickness++) {
+                int x = x1 + thickness;
+                if (y >= 0 && y < img.height && x >= 0 && x < img.width) {
+                    int idx = (y * img.width + x) * 3;
+                    ((uint8_t*)img.data)[idx] = r;
+                    ((uint8_t*)img.data)[idx + 1] = g;
+                    ((uint8_t*)img.data)[idx + 2] = b;
+                }
             }
             // Right line
-            if (y >= 0 && y < img.height && x2 >= 0 && x2 < img.width) {
-                int idx = (y * img.width + x2) * 3;
-                ((uint8_t*)img.data)[idx] = r;
-                ((uint8_t*)img.data)[idx + 1] = g;
-                ((uint8_t*)img.data)[idx + 2] = b;
+            for (int thickness = 0; thickness < 2; thickness++) {
+                int x = x2 - thickness;
+                if (y >= 0 && y < img.height && x >= 0 && x < img.width) {
+                    int idx = (y * img.width + x) * 3;
+                    ((uint8_t*)img.data)[idx] = r;
+                    ((uint8_t*)img.data)[idx + 1] = g;
+                    ((uint8_t*)img.data)[idx + 2] = b;
+                }
             }
         }
     }
