@@ -694,3 +694,57 @@ Failed to allocate RGB buffer
 4. ✅ 0.05ms 추론 속도 달성 가능
 
 ESP32에서의 실시간 AI 비전 처리가 현실이 되었습니다!
+
+---
+
+## 모델 교체 가이드
+
+### 모델 파일 이름 표준화
+
+프로젝트에서는 모델 파일 이름을 `golf_ball_model.espdl`로 고정하여 사용합니다.
+
+#### 이유
+- 다양한 버전의 모델 (예: golf_ball_99_4_mAP.espdl, golf_ball_95_7_mAP.espdl)을 쉽게 교체
+- 코드 수정 없이 모델만 바꿔서 사용 가능
+- 버전 관리 편의성
+
+### 새 모델 적용 방법
+
+1. **새 모델 학습 후**
+   - 학습된 모델 파일 (예: `golf_ball_new_version.espdl`)을 생성
+
+2. **모델 파일 복사**
+   ```bash
+   # 실제 모델 위치에 복사
+   copy golf_ball_new_version.espdl C:\Users\goldk\ESP-Camera\esp-dl\models\golf_ball_detect\s3\golf_ball_model.espdl
+   ```
+
+3. **참조 파일 생성 (선택사항)**
+   `C:\Users\goldk\ESP-Camera\esp-dl\models\cat_detect\models\s3\golf_ball_model.espdl` 파일 생성:
+   ```
+   COPY_FROM: C:/Users/goldk/ESP-Camera/esp-dl/models/golf_ball_detect/s3/golf_ball_model.espdl
+   ```
+
+4. **빌드 및 플래시**
+   ```bash
+   idf.py build
+   idf.py -p COM3 flash
+   ```
+
+### 필요한 파일
+- **필수**: `golf_ball_model.espdl` (새로 학습한 모델 파일)
+- **선택**: `.info`, `.json` 파일 (있으면 함께 복사)
+
+### 주의사항
+- 모델은 반드시 ESP32-S3용으로 학습되어야 함
+- ESPDL 형식이어야 함 (INT8 양자화 완료)
+- 입력 크기가 현재 설정 (480x160)과 호환되어야 함
+
+### 코드 내 참조
+```cpp
+// cat_detect.cpp
+ESP_LOGI("cat_detect", "Loading golf ball model: golf_ball_model.espdl");
+m_model = new cat_detect::ESPDet("golf_ball_model.espdl");
+```
+
+이제 새로운 모델을 학습할 때마다 파일명만 `golf_ball_model.espdl`로 변경하여 사용하면 됩니다!

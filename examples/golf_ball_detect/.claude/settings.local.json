@@ -16,7 +16,8 @@
       "Bash(dir C:UsersgoldkESP-Cameraesp-dlmodelsgolf_ball_detectmodelss3)",
       "Bash(rg:*)",
       "Bash(python:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(powershell:*)"
     ],
     "deny": []
   }

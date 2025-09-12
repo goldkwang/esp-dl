@@ -47,8 +47,8 @@ CatDetect::CatDetect(model_type_t model_type)
     switch (model_type) {
     case model_type_t::ESPDET_PICO_224_224_CAT:
 #if CONFIG_FLASH_ESPDET_PICO_224_224_CAT || CONFIG_CAT_DETECT_MODEL_IN_SDCARD
-        ESP_LOGI("cat_detect", "Loading golf ball model: golf_ball_99_4_mAP.espdl");
-        m_model = new cat_detect::ESPDet("golf_ball_99_4_mAP.espdl");
+        ESP_LOGI("cat_detect", "Loading golf ball model: golf_ball_model.espdl");
+        m_model = new cat_detect::ESPDet("golf_ball_model.espdl");
 #else
         ESP_LOGE("cat_detect", "espdet_pico_224_224_cat is not selected in menuconfig.");
 #endif
