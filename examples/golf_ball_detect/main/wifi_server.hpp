@@ -10,7 +10,19 @@ void start_wifi_server(void);
 // 이미지 버퍼 설정
 void set_image_buffer(uint8_t *buffer, size_t size);
 
+// 감지 결과 구조체
+struct detection_info {
+    float score;
+    float x;
+    float y;
+    float height;
+    float width;
+};
+
 // 감지 결과 설정
 void set_detection_result(bool found, float score, float x, float y);
+
+// 모든 감지 결과 설정 (최대 10개)
+void set_all_detections(const detection_info* detections, int count);
 
 #endif // WIFI_SERVER_HPP

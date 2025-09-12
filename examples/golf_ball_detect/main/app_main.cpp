@@ -50,9 +50,11 @@ static void detection_task(void *pvParameters) {
                         
                         // 검출 수행
                         auto &detect_results = detect->run(img);
+                        ESP_LOGI(TAG, "Raw detection count: %d", detect_results.size());
                         
                         // 검출 결과 설정
                         if (!detect_results.empty()) {
+                            // 첫 번째 감지만 기존 함수로 설정 (호환성 유지)
                             const auto &res = detect_results.front();
                             float score = res.score;
                             float x = (res.box[0] + res.box[2]) / 2.0f / roi_width;
@@ -61,8 +63,39 @@ static void detection_task(void *pvParameters) {
                             float box_height = res.box[3] - res.box[1];
                             ESP_LOGI(TAG, "Golf ball detected: %.2f%% at (%.1f, %.1f) Height=%.1f",
                                      score * 100, x * roi_width, y * roi_height, box_height);
+                            
+                            // 모든 감지 결과 저장 (width <= 160인 것만)
+                            detection_info detections[10];
+                            int count = 0;
+                            for (const auto &det : detect_results) {
+                                if (count >= 10) break;
+                                float det_width = det.box[2] - det.box[0];
+                                float det_height = det.box[3] - det.box[1];
+                                
+                                // width > 160이면 콘솔에만 로그 출력
+                                if (det_width > 160) {
+                                    ESP_LOGW(TAG, "Invalid detection - width too large: %.1f pixels (> 160), height=%.1f", 
+                                             det_width, det_height);
+                                    continue;  // 웹에는 전달하지 않음
+                                }
+                                
+                                detections[count].score = det.score;
+                                detections[count].x = (det.box[0] + det.box[2]) / 2.0f;
+                                detections[count].y = (det.box[1] + det.box[3]) / 2.0f;
+                                detections[count].height = det_height;
+                                detections[count].width = det_width;
+                                count++;
+                            }
+                            set_all_detections(detections, count);
+                            ESP_LOGI(TAG, "Valid detections after filtering: %d", count);
+                            
+                            // 필터링 후 유효한 감지가 없으면 감지 상태도 false로 설정
+                            if (count == 0) {
+                                set_detection_result(false, 0, 0, 0);
+                            }
                         } else {
                             set_detection_result(false, 0, 0, 0);
+                            set_all_detections(nullptr, 0);
                         }
                         
                         // 검출 박스 그리기

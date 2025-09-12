@@ -30,6 +30,12 @@ void draw_detection_boxes(dl::image::img_t &img, const std::list<dl::detect::res
         int width = x2 - x1;
         int height = y2 - y1;
         
+        // Skip drawing if width exceeds 160 pixels
+        if (width > 160) {
+            ESP_LOGW(TAG, "Skipping box %d - width too large: %d pixels (> 160)", box_index - 1, width);
+            continue;
+        }
+        
         // Use average of width and height for square (compromise between min and max)
         int size = (width + height) / 2;
         int half_size = size / 2;

@@ -194,6 +194,18 @@ static esp_err_t index_handler(httpd_req_t *req)
         .log-info {
             color: #ff0;
         }
+        .log-group-a {
+            color: #4CAF50;
+            background-color: rgba(76, 175, 80, 0.1);
+            border-left: 3px solid #4CAF50;
+            padding-left: 5px;
+        }
+        .log-group-b {
+            color: #2196F3;
+            background-color: rgba(33, 150, 243, 0.1);
+            border-left: 3px solid #2196F3;
+            padding-left: 5px;
+        }
         
         /* Buttons */
         button {
@@ -310,6 +322,7 @@ static esp_err_t index_handler(httpd_req_t *req)
         var roi_width = 480;
         var roi_height = 160;
         var detection_interval;
+        var detection_group_color = false;  // 감지 그룹 색상 토글
         
         function addLog(message, type) {
             var logArea = document.getElementById('logArea');
@@ -401,10 +414,31 @@ static esp_err_t index_handler(httpd_req_t *req)
                         document.getElementById('frameCounter').textContent = '(' + data.frame_count + ')';
                     }
                     
-                    if (data.found) {
+                    if (data.found && data.detections) {
+                        // 감지 정보 표시
+                        var scores = data.detections.map(d => (d.score * 100).toFixed(1) + '%').join(', ');
+                        document.getElementById('detectionResult').innerHTML = 
+                            'Golf ball detected! Scores: ' + scores;
+                        
+                        // 감지 개수 표시
+                        if (data.detections.length > 1) {
+                            addLog('=== ' + data.detections.length + ' balls detected ===', 'success');
+                        }
+                        
+                        // 로그에 각 감지 결과 추가
+                        data.detections.forEach((det, index) => {
+                            addLog('Position: (' + 
+                                   det.x.toFixed(0) + ', ' + 
+                                   det.y.toFixed(0) + ') - ' +
+                                   (det.score * 100).toFixed(1) + '% Height=' + 
+                                   det.height.toFixed(0) + ', Width=' +
+                                   det.width.toFixed(0), 'success');
+                        });
+                    } else if (data.found) {
+                        // 기존 형식 지원 (호환성)
                         document.getElementById('detectionResult').innerHTML = 
                             'Golf ball detected! Score: ' + (data.score * 100).toFixed(1) + '%';
-                        addLog('Detection: Golf ball at (' + 
+                        addLog('Position: (' + 
                                (data.x * roi_width).toFixed(0) + ', ' + 
                                (data.y * roi_height).toFixed(0) + ') - ' +
                                (data.score * 100).toFixed(1) + '%', 'success');
@@ -450,6 +484,10 @@ static float detection_score = 0.0f;
 static float detection_x = 0.0f;
 static float detection_y = 0.0f;
 
+// 모든 감지 결과 저장 (최대 10개)
+static detection_info all_detections[10];
+static int detection_count = 0;
+
 // Live Stream 카운터
 static uint32_t frame_counter = 0;
 
@@ -469,6 +507,14 @@ void set_detection_result(bool found, float score, float x, float y) {
     detection_score = score;
     detection_x = x;
     detection_y = y;
+}
+
+// 모든 감지 결과 설정
+void set_all_detections(const detection_info* detections, int count) {
+    detection_count = (count > 10) ? 10 : count;
+    for (int i = 0; i < detection_count; i++) {
+        all_detections[i] = detections[i];
+    }
 }
 
 // 이미지 전송 핸들러
@@ -611,11 +657,21 @@ static esp_err_t setROI_handler(httpd_req_t *req)
 // 감지 결과 반환 핸들러
 static esp_err_t get_detection_handler(httpd_req_t *req)
 {
-    char response[256];
-    if (detection_found) {
-        snprintf(response, sizeof(response),
-                 "{\"found\":true,\"score\":%f,\"x\":%f,\"y\":%f,\"frame_count\":%lu}",
-                 detection_score, detection_x, detection_y, frame_counter);
+    char response[1024];
+    
+    if (detection_count > 0) {
+        // 모든 감지 결과를 JSON 배열로 전송
+        int offset = snprintf(response, sizeof(response), 
+                             "{\"found\":true,\"frame_count\":%lu,\"detections\":[", frame_counter);
+        
+        for (int i = 0; i < detection_count && offset < sizeof(response) - 100; i++) {
+            if (i > 0) offset += snprintf(response + offset, sizeof(response) - offset, ",");
+            offset += snprintf(response + offset, sizeof(response) - offset,
+                              "{\"score\":%.3f,\"x\":%.1f,\"y\":%.1f,\"height\":%.1f,\"width\":%.1f}",
+                              all_detections[i].score, all_detections[i].x, 
+                              all_detections[i].y, all_detections[i].height, all_detections[i].width);
+        }
+        offset += snprintf(response + offset, sizeof(response) - offset, "]}");
     } else {
         snprintf(response, sizeof(response), "{\"found\":false,\"frame_count\":%lu}", frame_counter);
     }
