@@ -41,9 +41,11 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        ESP_LOGI(TAG, "Disconnected. Reconnecting...");
+        wifi_event_sta_disconnected_t* disconnected = (wifi_event_sta_disconnected_t*) event_data;
+        ESP_LOGI(TAG, "Disconnected. Reason: %d. Reconnecting...", disconnected->reason);
         esp_wifi_connect();
         xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+        vTaskDelay(pdMS_TO_TICKS(1000));  // Wait before reconnect
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
@@ -248,8 +250,8 @@ static esp_err_t index_handler(httpd_req_t *req)
         
         <div class="main-content">
             <div class="left-panel">
-                <h2>Live Stream</h2>
-                <img src="/stream" id="stream" style="width: 100%; height: auto;">
+                <h2>Live Stream <span id="frameCounter" style="color: #2196F3;">(0)</span></h2>
+                <img src="/image.jpg" id="stream" style="width: 100%; height: auto;">
             </div>
             
             <div class="right-panel">
@@ -394,6 +396,11 @@ static esp_err_t index_handler(httpd_req_t *req)
             fetch('/get_detection')
                 .then(response => response.json())
                 .then(data => {
+                    // 프레임 카운터 업데이트
+                    if (data.frame_count !== undefined) {
+                        document.getElementById('frameCounter').textContent = '(' + data.frame_count + ')';
+                    }
+                    
                     if (data.found) {
                         document.getElementById('detectionResult').innerHTML = 
                             'Golf ball detected! Score: ' + (data.score * 100).toFixed(1) + '%';
@@ -410,11 +417,19 @@ static esp_err_t index_handler(httpd_req_t *req)
                 });
         }
         
+        // 이미지 새로고침 함수
+        function refreshImage() {
+            var img = document.getElementById('stream');
+            img.src = '/image.jpg?t=' + new Date().getTime();
+        }
+        
         // 페이지 로드시 초기화
         window.onload = function() {
             addLog('Web interface loaded', 'success');
-            // 감지 결과를 주기적으로 업데이트 (2초마다)
-            detection_interval = setInterval(updateDetection, 2000);
+            // 감지 결과를 주기적으로 업데이트 (500ms마다)
+            detection_interval = setInterval(updateDetection, 500);
+            // 이미지도 주기적으로 새로고침 (200ms마다)
+            setInterval(refreshImage, 200);
         };
     </script>
 </body>
@@ -435,6 +450,9 @@ static float detection_score = 0.0f;
 static float detection_x = 0.0f;
 static float detection_y = 0.0f;
 
+// Live Stream 카운터
+static uint32_t frame_counter = 0;
+
 // 이미지 버퍼 설정 함수
 void set_image_buffer(uint8_t *buffer, size_t size) {
     if (g_image_buffer != NULL) {
@@ -442,6 +460,7 @@ void set_image_buffer(uint8_t *buffer, size_t size) {
     }
     g_image_buffer = buffer;
     g_image_size = size;
+    frame_counter++;  // 프레임 카운터 증가
 }
 
 // 감지 결과 설정 함수
@@ -489,7 +508,7 @@ static esp_err_t image_handler(httpd_req_t *req)
 // 스트림 핸들러 추가
 static esp_err_t stream_handler(httpd_req_t *req)
 {
-    char *part_buf[64];
+    char part_buf[256];
     httpd_resp_set_type(req, "multipart/x-mixed-replace; boundary=frame");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     
@@ -595,10 +614,10 @@ static esp_err_t get_detection_handler(httpd_req_t *req)
     char response[256];
     if (detection_found) {
         snprintf(response, sizeof(response),
-                 "{\"found\":true,\"score\":%f,\"x\":%f,\"y\":%f}",
-                 detection_score, detection_x, detection_y);
+                 "{\"found\":true,\"score\":%f,\"x\":%f,\"y\":%f,\"frame_count\":%lu}",
+                 detection_score, detection_x, detection_y, frame_counter);
     } else {
-        snprintf(response, sizeof(response), "{\"found\":false}");
+        snprintf(response, sizeof(response), "{\"found\":false,\"frame_count\":%lu}", frame_counter);
     }
     
     httpd_resp_set_type(req, "application/json");
@@ -611,9 +630,13 @@ static esp_err_t start_webserver(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.lru_purge_enable = true;
-    config.max_open_sockets = 1;  // 단일 연결만 허용
-    config.recv_wait_timeout = 10;  // 수신 대기 시간 감소
-    config.send_wait_timeout = 10;  // 전송 대기 시간 감소
+    config.max_open_sockets = 4;  // 다중 연결 허용
+    config.recv_wait_timeout = 30;  // 수신 대기 시간 증가
+    config.send_wait_timeout = 30;  // 전송 대기 시간 증가
+    config.keep_alive_enable = true;  // Keep-alive 활성화
+    config.keep_alive_idle = 5;      // Keep-alive 유휴 시간
+    config.keep_alive_interval = 5;   // Keep-alive 간격
+    config.keep_alive_count = 3;      // Keep-alive 재시도 횟수
     
     ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
     
@@ -713,6 +736,10 @@ void wifi_init_sta(void)
     strcpy((char*)wifi_config.sta.ssid, WIFI_SSID);
     strcpy((char*)wifi_config.sta.password, WIFI_PASSWORD);
     wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+    wifi_config.sta.pmf_cfg.capable = true;
+    wifi_config.sta.pmf_cfg.required = false;
+    wifi_config.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+    wifi_config.sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
     
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));

@@ -58,8 +58,9 @@ static void detection_task(void *pvParameters) {
                             float x = (res.box[0] + res.box[2]) / 2.0f / roi_width;
                             float y = (res.box[1] + res.box[3]) / 2.0f / roi_height;
                             set_detection_result(true, score, x, y);
-                            ESP_LOGI(TAG, "Golf ball detected: %.2f%% at (%.1f, %.1f)",
-                                     score * 100, x * roi_width, y * roi_height);
+                            float box_height = res.box[3] - res.box[1];
+                            ESP_LOGI(TAG, "Golf ball detected: %.2f%% at (%.1f, %.1f) Height=%.1f",
+                                     score * 100, x * roi_width, y * roi_height, box_height);
                         } else {
                             set_detection_result(false, 0, 0, 0);
                         }
@@ -84,7 +85,7 @@ static void detection_task(void *pvParameters) {
             }
             camera_return_fb(fb);
         }
-        vTaskDelay(pdMS_TO_TICKS(100)); // 10 FPS
+        vTaskDelay(pdMS_TO_TICKS(10)); // 더 빠른 처리 시도
     }
 }
 
