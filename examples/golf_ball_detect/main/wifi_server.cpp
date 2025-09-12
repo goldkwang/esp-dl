@@ -13,6 +13,8 @@
 #include "esp_system.h"
 #include "bsp/esp-bsp.h"
 #include "wifi_server.hpp"
+#include "camera_init.hpp"
+#include "esp_camera.h"
 
 static const char *TAG = "wifi_server";
 
@@ -49,97 +51,371 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     }
 }
 
-// 메인 페이지 핸들러
+// 메인 페이지 핸들러 - camera_web_server.cpp와 동일한 형식
 static esp_err_t index_handler(httpd_req_t *req)
 {
     const char* html = R"HTML(
-<!DOCTYPE html>
+<!DOCTYPE HTML>
 <html>
 <head>
-    <meta charset="utf-8">
-    <title>Golf Ball Detection</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ESP32-CAM Golf Ball Detection</title>
     <style>
+        /* Global styles */
         body {
             font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
             background-color: #f0f0f0;
+            padding: 20px;
+            margin: 0;
         }
+        
+        /* Typography */
         h1 {
             color: #333;
+            margin: 10px 0;
             text-align: center;
         }
+        h2, h3 {
+            margin-top: 0;
+        }
+        
+        /* Layout containers */
         .container {
-            max-width: 800px;
+            max-width: 1400px;
             margin: 0 auto;
             background-color: white;
             padding: 20px;
             border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
-        #image {
-            width: 100%;
-            max-width: 640px;
-            height: auto;
-            display: block;
-            margin: 20px auto;
-            border: 2px solid #ddd;
+        .main-content, .bottom-content {
+            display: flex;
+            gap: 20px;
         }
-        .info {
+        .main-content {
+            margin-bottom: 20px;
+        }
+        
+        /* Panel styles */
+        .left-panel {
+            flex: 1;
             text-align: center;
-            margin: 10px 0;
-            font-size: 18px;
         }
-        .button {
+        .right-panel {
+            flex: 1;
+            text-align: center;
+        }
+        .bottom-left, .bottom-right {
+            flex: 1;
+        }
+        
+        /* Image styles */
+        img {
+            width: 100%;
+            height: auto;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            display: block;
+        }
+        
+        /* Controls and forms */
+        .controls {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f8f8f8;
+            border-radius: 5px;
+        }
+        #roi-controls {
+            height: auto;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .control-group {
+            margin: 10px 0;
+        }
+        .control-group label {
             display: inline-block;
-            padding: 10px 20px;
+            width: 180px;
+            text-align: right;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        .control-group label[style*="margin-left"] {
+            width: 80px;
+            margin-left: 20px;
+        }
+        input[type="number"] {
+            width: 80px;
+            padding: 5px;
             margin: 5px;
+        }
+        
+        /* Info panel */
+        .info {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e8f4f8;
+            border-radius: 5px;
+            height: 270px;
+            overflow-y: auto;
+        }
+        .info p {
+            margin: 5px 0;
+            color: #555;
+        }
+        
+        /* Log area */
+        .log-area {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #1e1e1e;
+            border: 1px solid #444;
+            border-radius: 5px;
+            height: 270px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 14px;
+            color: #0f0;
+            text-align: left;
+        }
+        .log-entry {
+            margin: 2px 0;
+        }
+        .log-error {
+            color: #f00;
+        }
+        .log-success {
+            color: #0f0;
+        }
+        .log-info {
+            color: #ff0;
+        }
+        
+        /* Buttons */
+        button {
             background-color: #4CAF50;
             color: white;
-            text-decoration: none;
+            padding: 10px 20px;
+            border: none;
             border-radius: 5px;
             cursor: pointer;
+            margin: 5px;
         }
-        .button:hover {
+        button:hover {
             background-color: #45a049;
         }
-        .center {
-            text-align: center;
-            margin: 20px 0;
+        #applyButton {
+            background-color: #2196F3;
+        }
+        #applyButton:hover {
+            background-color: #0b7dda;
+        }
+        button[style*="#f44336"] {
+            background-color: #f44336;
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+        button[style*="#f44336"]:hover {
+            background-color: #d32f2f;
+        }
+        
+        /* Button row */
+        .button-row {
+            margin-top: 10px;
+            white-space: nowrap;
+        }
+        .button-row button {
+            display: inline-block;
+        }
+        
+        /* Responsive design */
+        @media (max-width: 1024px) {
+            .main-content, .bottom-content {
+                flex-direction: column;
+            }
+            .container {
+                max-width: 100%;
+                padding: 10px;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Golf Ball Detection System</h1>
-        <div class="info" id="version">Version: Loading...</div>
-        <div class="center">
-            <img id="image" src="/image.jpg" alt="Detection Result">
+        <h1>ESP32-CAM Golf Ball Detection</h1>
+        
+        <div class="main-content">
+            <div class="left-panel">
+                <h2>Live Stream</h2>
+                <img src="/stream" id="stream" style="width: 100%; height: auto;">
+            </div>
+            
+            <div class="right-panel">
+                <h2>ROI Settings</h2>
+                <div class="controls" id="roi-controls">
+                    <div class="control-group">
+                        <label>X Offset (↑좌,↓우)</label>
+                        <input type="number" id="xOffset" value="496" min="0" max="800" step="8">
+                        <label style="width: 80px; margin-left: 20px;">Width</label>
+                        <input type="number" id="width" value="480" min="480" max="800" step="8">
+                    </div>
+                    <div class="control-group">
+                        <label>Y Offset (↑상,↓하)</label>
+                        <input type="number" id="yOffset" value="640" min="0" max="864" step="8">
+                        <label style="width: 80px; margin-left: 20px;">Height</label>
+                        <input type="number" id="height" value="160" min="64" max="400" step="8">
+                    </div>
+                </div>
+                <div class="button-row">
+                    <button id="applyButton" onclick="applySettings()">Apply</button>
+                    <button onclick="setDefault()">Default</button>
+                </div>
+            </div>
         </div>
-        <div class="info" id="status">Status: Ready</div>
-        <div class="center">
-            <button class="button" onclick="refreshImage()">Refresh Image</button>
+        
+        <div class="bottom-content">
+            <div class="bottom-left">
+                <div class="info">
+                    <p><strong>ESP32-S3 Camera with OV2640 Sensor</strong></p>
+                    <p>Resolution: SXGA (1280x1024)</p>
+                    <p id="roiInfo">ROI: 480x160 @ (496, 640)</p>
+                    <p>Quality: High (JPEG=10)</p>
+                    <p>Stream: MJPEG</p>
+                    <p id="currentSettings">Current: X=496, Y=640, Width=480, Height=160</p>
+                    <p id="defaultSettings">Default: X=496, Y=640, Width=480, Height=160</p>
+                    <p id="detectionStatus" style="font-weight: bold; color: #4CAF50;">Detection: Enabled</p>
+                    <p id="detectionResult" style="font-weight: bold; color: #4CAF50;"></p>
+                </div>
+            </div>
+            
+            <div class="bottom-right">
+                <div style="position: relative;">
+                    <button onclick="clearLog()" style="position: absolute; right: 10px; top: 10px; background-color: #f44336; padding: 5px 10px; font-size: 12px;">Clear</button>
+                    <div class="log-area" id="logArea">
+                        <div class="log-entry log-info">System ready. Waiting for commands...</div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
+    
     <script>
-        function refreshImage() {
-            var img = document.getElementById('image');
-            img.src = '/image.jpg?' + new Date().getTime();
+        // 현재 설정값을 추적하기 위한 변수
+        var roi_offset_x = 496;
+        var roi_offset_y = 640;
+        var roi_width = 480;
+        var roi_height = 160;
+        var detection_interval;
+        
+        function addLog(message, type) {
+            var logArea = document.getElementById('logArea');
+            var timestamp = new Date().toLocaleTimeString();
+            var entry = document.createElement('div');
+            entry.className = 'log-entry log-' + (type || 'info');
+            entry.textContent = '[' + timestamp + '] ' + message;
+            logArea.appendChild(entry);
+            logArea.scrollTop = logArea.scrollHeight;
+            
+            // 로그가 50개를 초과하면 오래된 것부터 제거
+            while (logArea.children.length > 50) {
+                logArea.removeChild(logArea.firstChild);
+            }
         }
         
-        function updateVersion() {
-            fetch('/version')
-                .then(response => response.text())
+        function clearLog() {
+            var logArea = document.getElementById('logArea');
+            logArea.innerHTML = '<div class="log-entry log-info">Log cleared. System ready.</div>';
+        }
+        
+        function updateCurrentDisplay(x, y, w, h) {
+            document.getElementById('currentSettings').textContent = 'Current: X=' + x + ', Y=' + y + ', Width=' + w + ', Height=' + h;
+        }
+        
+        function applySettings() {
+            var x = document.getElementById('xOffset').value;
+            var y = document.getElementById('yOffset').value;
+            var w = document.getElementById('width').value;
+            var h = document.getElementById('height').value;
+            
+            // Width가 최소값보다 작으면 강제로 480으로 설정
+            if (w < 480) {
+                w = 480;
+                document.getElementById('width').value = 480;
+                addLog('Width adjusted to minimum value: 480', 'info');
+            }
+            
+            var url = '/setROI?x=' + x + '&y=' + y + '&w=' + w + '&h=' + h;
+            var streamImg = document.getElementById('stream');
+            var applyBtn = document.getElementById('applyButton');
+            
+            // 버튼 비활성화
+            applyBtn.disabled = true;
+            applyBtn.textContent = 'Applying...';
+            
+            addLog('Sending ROI settings: ' + w + 'x' + h + ' @ (' + x + ', ' + y + ')', 'info');
+            
+            fetch(url)
+                .then(response => {
+                    addLog('Server response: ' + response.status, response.ok ? 'success' : 'error');
+                    return response.text();
+                })
                 .then(data => {
-                    document.getElementById('version').innerHTML = 'Version: ' + data;
+                    document.getElementById('roiInfo').textContent = 'ROI: ' + w + 'x' + h + ' @ (' + x + ', ' + y + ')';
+                    updateCurrentDisplay(x, y, w, h);
+                    // 현재 값 업데이트
+                    roi_offset_x = parseInt(x);
+                    roi_offset_y = parseInt(y);
+                    roi_width = parseInt(w);
+                    roi_height = parseInt(h);
+                    addLog('Settings applied: ' + data, 'success');
+                    applyBtn.disabled = false;
+                    applyBtn.textContent = 'Apply';
+                })
+                .catch(error => {
+                    addLog('Error: ' + error.message, 'error');
+                    applyBtn.disabled = false;
+                    applyBtn.textContent = 'Apply';
                 });
         }
         
-        // 페이지 로드시 버전 정보 가져오기
-        window.onload = function() {
-            updateVersion();
+        function setDefault() {
+            document.getElementById('xOffset').value = 496;
+            document.getElementById('yOffset').value = 640;
+            document.getElementById('width').value = 480;
+            document.getElementById('height').value = 160;
+            addLog('Settings reset to default values', 'info');
+            applySettings();
         }
+        
+        // 감지 결과 업데이트
+        function updateDetection() {
+            fetch('/get_detection')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.found) {
+                        document.getElementById('detectionResult').innerHTML = 
+                            'Golf ball detected! Score: ' + (data.score * 100).toFixed(1) + '%';
+                        addLog('Detection: Golf ball at (' + 
+                               (data.x * roi_width).toFixed(0) + ', ' + 
+                               (data.y * roi_height).toFixed(0) + ') - ' +
+                               (data.score * 100).toFixed(1) + '%', 'success');
+                    } else {
+                        document.getElementById('detectionResult').innerHTML = 'No golf ball detected';
+                    }
+                })
+                .catch(error => {
+                    console.error('Detection update error:', error);
+                });
+        }
+        
+        // 페이지 로드시 초기화
+        window.onload = function() {
+            addLog('Web interface loaded', 'success');
+            // 감지 결과를 주기적으로 업데이트 (2초마다)
+            detection_interval = setInterval(updateDetection, 2000);
+        };
     </script>
 </body>
 </html>
@@ -153,6 +429,12 @@ static esp_err_t index_handler(httpd_req_t *req)
 static uint8_t *g_image_buffer = NULL;
 static size_t g_image_size = 0;
 
+// 감지 결과 및 ROI 설정
+static bool detection_found = false;
+static float detection_score = 0.0f;
+static float detection_x = 0.0f;
+static float detection_y = 0.0f;
+
 // 이미지 버퍼 설정 함수
 void set_image_buffer(uint8_t *buffer, size_t size) {
     if (g_image_buffer != NULL) {
@@ -160,6 +442,14 @@ void set_image_buffer(uint8_t *buffer, size_t size) {
     }
     g_image_buffer = buffer;
     g_image_size = size;
+}
+
+// 감지 결과 설정 함수
+void set_detection_result(bool found, float score, float x, float y) {
+    detection_found = found;
+    detection_score = score;
+    detection_x = x;
+    detection_y = y;
 }
 
 // 이미지 전송 핸들러
@@ -196,11 +486,124 @@ static esp_err_t image_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+// 스트림 핸들러 추가
+static esp_err_t stream_handler(httpd_req_t *req)
+{
+    char *part_buf[64];
+    httpd_resp_set_type(req, "multipart/x-mixed-replace; boundary=frame");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    
+    while (true) {
+        if (g_image_buffer == NULL || g_image_size == 0) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+        
+        // MJPEG 프레임 헤더
+        size_t hlen = snprintf((char *)part_buf, 64, "--frame\r\nContent-Type: image/jpeg\r\n\r\n");
+        if (httpd_resp_send_chunk(req, (const char *)part_buf, hlen) != ESP_OK) {
+            break;
+        }
+        
+        // 이미지 데이터 전송
+        if (httpd_resp_send_chunk(req, (const char *)g_image_buffer, g_image_size) != ESP_OK) {
+            break;
+        }
+        
+        // 프레임 바운더리
+        if (httpd_resp_send_chunk(req, "\r\n", 2) != ESP_OK) {
+            break;
+        }
+        
+        vTaskDelay(pdMS_TO_TICKS(100)); // 10 FPS
+    }
+    
+    return ESP_OK;
+}
+
 // 버전 정보 핸들러
 static esp_err_t version_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/plain");
     return httpd_resp_send(req, VERSION_STRING, strlen(VERSION_STRING));
+}
+
+// ROI 설정 핸들러
+static esp_err_t setROI_handler(httpd_req_t *req)
+{
+    char query[256];
+    char value[32];
+    
+    // URL 쿼리 파라미터 가져오기
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        // X offset
+        if (httpd_query_key_value(query, "x", value, sizeof(value)) == ESP_OK) {
+            int x = atoi(value);
+            if (x >= 0 && x <= 800) {
+                roi_offset_x = x;
+            }
+        }
+        
+        // Y offset
+        if (httpd_query_key_value(query, "y", value, sizeof(value)) == ESP_OK) {
+            int y = atoi(value);
+            if (y >= 0 && y <= 864) {
+                roi_offset_y = y;
+            }
+        }
+        
+        // Width
+        if (httpd_query_key_value(query, "w", value, sizeof(value)) == ESP_OK) {
+            int w = atoi(value);
+            if (w >= 480 && w <= 800) {
+                roi_width = w;
+            }
+        }
+        
+        // Height
+        if (httpd_query_key_value(query, "h", value, sizeof(value)) == ESP_OK) {
+            int h = atoi(value);
+            if (h >= 64 && h <= 400) {
+                roi_height = h;
+            }
+        }
+        
+        // 카메라 센서에 ROI 적용
+        sensor_t *s = esp_camera_sensor_get();
+        if (s) {
+            roi_enabled = true;
+            set_hw_roi_fixed(s);
+            ESP_LOGI(TAG, "New ROI settings applied: %dx%d @ (%d, %d)", 
+                     roi_width, roi_height, roi_offset_x, roi_offset_y);
+        }
+    }
+    
+    // 응답
+    httpd_resp_set_type(req, "text/plain");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    char response[256];
+    snprintf(response, sizeof(response), "OK - ROI set to %dx%d @ (%d, %d)", 
+             roi_width, roi_height, roi_offset_x, roi_offset_y);
+    httpd_resp_send(req, response, strlen(response));
+    
+    return ESP_OK;
+}
+
+// 감지 결과 반환 핸들러
+static esp_err_t get_detection_handler(httpd_req_t *req)
+{
+    char response[256];
+    if (detection_found) {
+        snprintf(response, sizeof(response),
+                 "{\"found\":true,\"score\":%f,\"x\":%f,\"y\":%f}",
+                 detection_score, detection_x, detection_y);
+    } else {
+        snprintf(response, sizeof(response), "{\"found\":false}");
+    }
+    
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    return httpd_resp_send(req, response, strlen(response));
 }
 
 // HTTP 서버 시작
@@ -240,7 +643,31 @@ static esp_err_t start_webserver(void)
         };
         httpd_register_uri_handler(server, &version_uri);
         
-        ESP_LOGI(TAG, "Server Started");
+        httpd_uri_t stream_uri = {
+            .uri       = "/stream",
+            .method    = HTTP_GET,
+            .handler   = stream_handler,
+            .user_ctx  = NULL
+        };
+        httpd_register_uri_handler(server, &stream_uri);
+        
+        httpd_uri_t setROI_uri = {
+            .uri       = "/setROI",
+            .method    = HTTP_GET,
+            .handler   = setROI_handler,
+            .user_ctx  = NULL
+        };
+        httpd_register_uri_handler(server, &setROI_uri);
+        
+        httpd_uri_t get_detection_uri = {
+            .uri       = "/get_detection",
+            .method    = HTTP_GET,
+            .handler   = get_detection_handler,
+            .user_ctx  = NULL
+        };
+        httpd_register_uri_handler(server, &get_detection_uri);
+        
+        ESP_LOGI(TAG, "Server Started with stream support");
         return ESP_OK;
     }
     

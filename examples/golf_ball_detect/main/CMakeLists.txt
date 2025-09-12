@@ -2,7 +2,7 @@ set(src_dirs        ./)
 
 set(include_dirs    ./)
 
-set(requires        cat_detect esp_jpeg fatfs esp_wifi esp_http_server nvs_flash)
+set(requires        cat_detect esp_jpeg fatfs esp_wifi esp_http_server nvs_flash esp32-camera)
 
 if (IDF_TARGET STREQUAL "esp32s3")
     list(APPEND requires esp32_s3_eye_noglib
@@ -12,6 +12,6 @@ elseif (IDF_TARGET STREQUAL "esp32p4")
                          esp_lcd)
 endif()
 
-set(embed_files     "cat.jpg")
+# Removed embed_files since we're using camera now
 
 idf_component_register(SRC_DIRS ${src_dirs} INCLUDE_DIRS ${include_dirs} REQUIRES ${requires} EMBED_FILES ${embed_files})

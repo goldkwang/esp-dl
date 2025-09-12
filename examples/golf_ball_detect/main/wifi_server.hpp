@@ -10,4 +10,7 @@ void start_wifi_server(void);
 // 이미지 버퍼 설정
 void set_image_buffer(uint8_t *buffer, size_t size);
 
+// 감지 결과 설정
+void set_detection_result(bool found, float score, float x, float y);
+
 #endif // WIFI_SERVER_HPP
