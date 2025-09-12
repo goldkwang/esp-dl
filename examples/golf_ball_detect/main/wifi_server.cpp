@@ -283,6 +283,7 @@ static esp_err_t index_handler(httpd_req_t *req)
                     </div>
                 </div>
                 <div class="button-row">
+                    <button onclick="saveImage()">Save Image</button>
                     <button id="applyButton" onclick="applySettings()">Apply</button>
                     <button onclick="setDefault()">Default</button>
                 </div>
@@ -457,6 +458,37 @@ static esp_err_t index_handler(httpd_req_t *req)
             img.src = '/image.jpg?t=' + new Date().getTime();
         }
         
+        // 이미지 저장 함수
+        function saveImage() {
+            // 현재 시간으로 파일명 생성
+            var timestamp = new Date();
+            var filename = 'golf_ball_' + 
+                          timestamp.getFullYear() + 
+                          ('0' + (timestamp.getMonth() + 1)).slice(-2) +
+                          ('0' + timestamp.getDate()).slice(-2) + '_' +
+                          ('0' + timestamp.getHours()).slice(-2) +
+                          ('0' + timestamp.getMinutes()).slice(-2) +
+                          ('0' + timestamp.getSeconds()).slice(-2) + '.jpg';
+            
+            // 원본 이미지 다운로드 (박스 없는 이미지)
+            fetch('/original.jpg')
+                .then(response => response.blob())
+                .then(blob => {
+                    var url = window.URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    addLog('Image saved: ' + filename + ' (original without boxes)', 'success');
+                })
+                .catch(error => {
+                    addLog('Failed to save image: ' + error, 'error');
+                });
+        }
+        
         // 페이지 로드시 초기화
         window.onload = function() {
             addLog('Web interface loaded', 'success');
@@ -477,6 +509,10 @@ static esp_err_t index_handler(httpd_req_t *req)
 // 전역 변수로 처리된 이미지 저장
 static uint8_t *g_image_buffer = NULL;
 static size_t g_image_size = 0;
+
+// 원본 이미지 버퍼 (박스 없는 이미지)
+static uint8_t *g_original_buffer = NULL;
+static size_t g_original_size = 0;
 
 // 감지 결과 및 ROI 설정
 static bool detection_found = false;
@@ -499,6 +535,15 @@ void set_image_buffer(uint8_t *buffer, size_t size) {
     g_image_buffer = buffer;
     g_image_size = size;
     frame_counter++;  // 프레임 카운터 증가
+}
+
+// 원본 이미지 버퍼 설정 함수
+void set_original_buffer(uint8_t *buffer, size_t size) {
+    if (g_original_buffer != NULL) {
+        free(g_original_buffer);
+    }
+    g_original_buffer = buffer;
+    g_original_size = size;
 }
 
 // 감지 결과 설정 함수
@@ -540,6 +585,40 @@ static esp_err_t image_handler(httpd_req_t *req)
         size_t to_send = ((g_image_size - sent) > chunk_size) ? chunk_size : (g_image_size - sent);
         if (httpd_resp_send_chunk(req, (const char *)(g_image_buffer + sent), to_send) != ESP_OK) {
             ESP_LOGE(TAG, "Failed to send image chunk");
+            return ESP_FAIL;
+        }
+        sent += to_send;
+    }
+    
+    // 청크 전송 종료
+    httpd_resp_send_chunk(req, NULL, 0);
+    
+    return ESP_OK;
+}
+
+// 원본 이미지 전송 핸들러 (박스 없는 이미지)
+static esp_err_t original_handler(httpd_req_t *req)
+{
+    if (g_original_buffer == NULL || g_original_size == 0) {
+        ESP_LOGE(TAG, "No original image available");
+        httpd_resp_send_404(req);
+        return ESP_FAIL;
+    }
+    
+    // HTTP 헤더 설정
+    httpd_resp_set_type(req, "image/jpeg");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+    char content_length[16];
+    snprintf(content_length, sizeof(content_length), "%d", g_original_size);
+    httpd_resp_set_hdr(req, "Content-Length", content_length);
+    
+    // 이미지 전송 - 청크 단위로
+    size_t sent = 0;
+    size_t chunk_size = 4096;
+    while (sent < g_original_size) {
+        size_t to_send = ((g_original_size - sent) > chunk_size) ? chunk_size : (g_original_size - sent);
+        if (httpd_resp_send_chunk(req, (const char *)(g_original_buffer + sent), to_send) != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to send original chunk");
             return ESP_FAIL;
         }
         sent += to_send;
@@ -745,6 +824,14 @@ static esp_err_t start_webserver(void)
             .user_ctx  = NULL
         };
         httpd_register_uri_handler(server, &get_detection_uri);
+        
+        httpd_uri_t original_uri = {
+            .uri       = "/original.jpg",
+            .method    = HTTP_GET,
+            .handler   = original_handler,
+            .user_ctx  = NULL
+        };
+        httpd_register_uri_handler(server, &original_uri);
         
         ESP_LOGI(TAG, "Server Started with stream support");
         return ESP_OK;

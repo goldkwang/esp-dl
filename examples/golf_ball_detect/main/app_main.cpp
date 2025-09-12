@@ -20,6 +20,13 @@ static void detection_task(void *pvParameters) {
     while (1) {
         camera_fb_t *fb = camera_get_fb();
         if (fb) {
+            // 원본 JPEG 이미지 저장 (박스 그리기 전)
+            uint8_t *original_copy = (uint8_t*)malloc(fb->len);
+            if (original_copy) {
+                memcpy(original_copy, fb->buf, fb->len);
+                set_original_buffer(original_copy, fb->len);
+            }
+            
             // JPEG를 RGB888로 변환
             uint8_t *rgb_buf = (uint8_t *)heap_caps_malloc(roi_width * roi_height * 3, MALLOC_CAP_SPIRAM);
             if (rgb_buf) {

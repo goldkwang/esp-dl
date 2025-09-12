@@ -10,6 +10,9 @@ void start_wifi_server(void);
 // 이미지 버퍼 설정
 void set_image_buffer(uint8_t *buffer, size_t size);
 
+// 원본 이미지 버퍼 설정 (박스 없는 이미지)
+void set_original_buffer(uint8_t *buffer, size_t size);
+
 // 감지 결과 구조체
 struct detection_info {
     float score;
