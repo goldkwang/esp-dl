@@ -17,7 +17,11 @@
       "Bash(rg:*)",
       "Bash(python:*)",
       "Bash(find:*)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(git checkout:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(gcc:*)",
+      "Bash(./test_roi_registers)"
     ],
     "deny": []
   }

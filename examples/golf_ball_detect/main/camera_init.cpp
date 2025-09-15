@@ -8,10 +8,11 @@ static const char *TAG = "camera_init";
 
 // ROI configuration variables
 bool roi_enabled = true;
-int roi_offset_x = 496;  
-int roi_offset_y = 640;  
-int roi_width = 480;     
-int roi_height = 160;
+// 544x264 - OV2640의 최대 안정적인 너비
+int roi_offset_x = 368;
+int roi_offset_y = 380;
+int roi_width = 544;
+int roi_height = 264;
 
 // Camera configuration
 static camera_config_t camera_config = {
@@ -33,7 +34,7 @@ static camera_config_t camera_config = {
     .pin_href = CAM_PIN_HREF,
     .pin_pclk = CAM_PIN_PCLK,
     
-    .xclk_freq_hz = 20000000,
+    .xclk_freq_hz = 20000000,  // 원래 20MHz로 복원
     .ledc_timer = LEDC_TIMER_0,
     .ledc_channel = LEDC_CHANNEL_0,
     
@@ -58,34 +59,58 @@ void set_hw_roi_fixed(sensor_t *sensor) {
     // Bank selection to DSP
     sensor->set_reg(sensor, BANK_SEL, 0xff, BANK_DSP);
     
+    // Reset DSP
+    sensor->set_reg(sensor, 0xE0, 0xff, 0x01);
+    vTaskDelay(pdMS_TO_TICKS(10));
+    sensor->set_reg(sensor, 0xE0, 0xff, 0x00);
+    vTaskDelay(pdMS_TO_TICKS(10));
+    
     // ROI offsets (divide by 4 for register values)
     uint16_t hoff = roi_offset_x / 4;
     uint16_t voff = roi_offset_y / 4;
     
-    // Set horizontal offset
+    // Set offsets
     sensor->set_reg(sensor, REG_XOFFL, 0xff, hoff & 0xff);
-    sensor->set_reg(sensor, REG_VHYX, 0x03, (hoff >> 8) & 0x03);
-    
-    // Set vertical offset  
     sensor->set_reg(sensor, REG_YOFFL, 0xff, voff & 0xff);
-    sensor->set_reg(sensor, REG_VHYX, 0xc0, ((voff >> 2) & 0x40) | ((voff >> 4) & 0x80));
     
     // Set ROI size (divide by 4)
     uint16_t hsize = roi_width / 4;
     uint16_t vsize = roi_height / 4;
     
+    ESP_LOGI(TAG, "ROI register values - hsize: %d (0x%02X), vsize: %d (0x%02X)", 
+             hsize, hsize, vsize, vsize);
+    ESP_LOGI(TAG, "Width: %d, Height: %d", roi_width, roi_height);
+    ESP_LOGI(TAG, "hoff: %d (0x%02X), voff: %d (0x%02X)", hoff, hoff, voff, voff);
+    
+    // Set sizes
     sensor->set_reg(sensor, REG_HSIZE, 0xff, hsize & 0xff);
-    sensor->set_reg(sensor, REG_VHYX, 0x0c, (hsize >> 6) & 0x0c);
-    
     sensor->set_reg(sensor, REG_VSIZE, 0xff, vsize & 0xff);
-    sensor->set_reg(sensor, REG_VHYX, 0x30, (vsize >> 4) & 0x30);
     
-    // Zoom window size
-    sensor->set_reg(sensor, REG_ZMOW, 0xff, (roi_width / 4) & 0xff);
-    sensor->set_reg(sensor, REG_ZMOH, 0xff, (roi_height / 4) & 0xff);
-    sensor->set_reg(sensor, REG_ZMHH, 0xff, 
-                    (((roi_height / 4) >> 8) & 0x0f) | 
-                    (((roi_width / 4) >> 4) & 0xf0));
+    // Set VHYX register - MUST be set as complete value, not bit by bit!
+    // VHYX[7:0] = {vsize[8], voff[10:8], hsize[8], hoff[10:8]}
+    uint8_t vhyx = ((vsize >> 1) & 0x80) | ((voff >> 4) & 0x70) | ((hsize >> 5) & 0x08) | ((hoff >> 8) & 0x07);
+    ESP_LOGI(TAG, "VHYX register: 0x%02X (vsize[8]=%d, voff[10:8]=%d, hsize[8]=%d, hoff[10:8]=%d)",
+             vhyx, (vsize >> 8) & 1, (voff >> 8) & 7, (hsize >> 8) & 1, (hoff >> 8) & 7);
+    sensor->set_reg(sensor, REG_VHYX, 0xff, vhyx);
+    
+    // Zoom window size - use hsize and vsize directly
+    sensor->set_reg(sensor, REG_ZMOW, 0xff, hsize & 0xff);
+    sensor->set_reg(sensor, REG_ZMOH, 0xff, vsize & 0xff);
+    // ZMHH[2] = vsize[8], ZMHH[1:0] = hsize[9:8]
+    uint8_t zmhh = ((vsize >> 6) & 0x04) | ((hsize >> 8) & 0x03);
+    ESP_LOGI(TAG, "ZMHH register: 0x%02X (vsize bit 8: %d, hsize bits 9-8: %d)",
+             zmhh, (vsize >> 8) & 1, (hsize >> 8) & 3);
+    sensor->set_reg(sensor, REG_ZMHH, 0xff, zmhh);
+    
+    // Set TEST register - not setting for stability
+    ESP_LOGI(TAG, "TEST register: Not setting (ESP32 camera driver approach)");
+    
+    // Log the expected values for debugging
+    ESP_LOGI(TAG, "Expected register values:");
+    ESP_LOGI(TAG, "  HSIZE: 0x%02X, VSIZE: 0x%02X", hsize & 0xff, vsize & 0xff);
+    ESP_LOGI(TAG, "  XOFFL: 0x%02X, YOFFL: 0x%02X", hoff & 0xff, voff & 0xff);
+    ESP_LOGI(TAG, "  VHYX: 0x%02X", vhyx);
+    ESP_LOGI(TAG, "  ZMOW: 0x%02X, ZMOH: 0x%02X, ZMHH: 0x%02X", hsize & 0xff, vsize & 0xff, zmhh);
     
     ESP_LOGI(TAG, "HW ROI configured successfully");
 }
@@ -150,11 +175,11 @@ esp_err_t camera_init() {
                 }
             }
             
-            // Apply initial ROI
+            // Apply initial ROI directly
             roi_enabled = true;
             set_hw_roi_fixed(s);
             
-            // Flush buffers after ROI
+            // Normal flush
             vTaskDelay(pdMS_TO_TICKS(200));
             for (int i = 0; i < 3; i++) {
                 camera_fb_t *fb = esp_camera_fb_get();

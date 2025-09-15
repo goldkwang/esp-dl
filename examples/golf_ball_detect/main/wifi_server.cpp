@@ -271,15 +271,15 @@ static esp_err_t index_handler(httpd_req_t *req)
                 <div class="controls" id="roi-controls">
                     <div class="control-group">
                         <label>X Offset (↑좌,↓우)</label>
-                        <input type="number" id="xOffset" value="496" min="0" max="800" step="8">
+                        <input type="number" id="xOffset" value="368" min="0" max="800" step="8">
                         <label style="width: 80px; margin-left: 20px;">Width</label>
-                        <input type="number" id="width" value="480" min="480" max="800" step="8">
+                        <input type="number" id="width" value="544" min="64" max="544" step="8">
                     </div>
                     <div class="control-group">
                         <label>Y Offset (↑상,↓하)</label>
-                        <input type="number" id="yOffset" value="640" min="0" max="864" step="8">
+                        <input type="number" id="yOffset" value="380" min="0" max="864" step="8">
                         <label style="width: 80px; margin-left: 20px;">Height</label>
-                        <input type="number" id="height" value="160" min="64" max="400" step="8">
+                        <input type="number" id="height" value="264" min="64" max="400" step="8">
                     </div>
                 </div>
                 <div class="button-row">
@@ -295,11 +295,11 @@ static esp_err_t index_handler(httpd_req_t *req)
                 <div class="info">
                     <p><strong>ESP32-S3 Camera with OV2640 Sensor</strong></p>
                     <p>Resolution: SXGA (1280x1024)</p>
-                    <p id="roiInfo">ROI: 480x160 @ (496, 640)</p>
+                    <p id="roiInfo">ROI: 544x264 @ (368, 380)</p>
                     <p>Quality: High (JPEG=10)</p>
                     <p>Stream: MJPEG</p>
-                    <p id="currentSettings">Current: X=496, Y=640, Width=480, Height=160</p>
-                    <p id="defaultSettings">Default: X=496, Y=640, Width=480, Height=160</p>
+                    <p id="currentSettings">Current: X=352, Y=520, Width=568, Height=264</p>
+                    <p id="defaultSettings">Default: X=352, Y=520, Width=568, Height=264</p>
                     <p id="detectionStatus" style="font-weight: bold; color: #4CAF50;">Detection: Enabled</p>
                     <p id="detectionResult" style="font-weight: bold; color: #4CAF50;"></p>
                 </div>
@@ -318,10 +318,10 @@ static esp_err_t index_handler(httpd_req_t *req)
     
     <script>
         // 현재 설정값을 추적하기 위한 변수
-        var roi_offset_x = 496;
-        var roi_offset_y = 640;
-        var roi_width = 480;
-        var roi_height = 160;
+        var roi_offset_x = 352;
+        var roi_offset_y = 520;
+        var roi_width = 568;
+        var roi_height = 264;
         var detection_interval;
         var detection_group_color = false;  // 감지 그룹 색상 토글
         
@@ -397,10 +397,10 @@ static esp_err_t index_handler(httpd_req_t *req)
         }
         
         function setDefault() {
-            document.getElementById('xOffset').value = 496;
-            document.getElementById('yOffset').value = 640;
-            document.getElementById('width').value = 480;
-            document.getElementById('height').value = 160;
+            document.getElementById('xOffset').value = 368;
+            document.getElementById('yOffset').value = 380;
+            document.getElementById('width').value = 544;
+            document.getElementById('height').value = 264;
             addLog('Settings reset to default values', 'info');
             applySettings();
         }
@@ -699,7 +699,7 @@ static esp_err_t setROI_handler(httpd_req_t *req)
         // Width
         if (httpd_query_key_value(query, "w", value, sizeof(value)) == ESP_OK) {
             int w = atoi(value);
-            if (w >= 480 && w <= 800) {
+            if (w >= 64 && w <= 800) {
                 roi_width = w;
             }
         }
@@ -719,6 +719,16 @@ static esp_err_t setROI_handler(httpd_req_t *req)
             set_hw_roi_fixed(s);
             ESP_LOGI(TAG, "New ROI settings applied: %dx%d @ (%d, %d)", 
                      roi_width, roi_height, roi_offset_x, roi_offset_y);
+            
+            // ROI 적용 후 버퍼 플러시
+            vTaskDelay(pdMS_TO_TICKS(200));
+            for (int i = 0; i < 3; i++) {
+                camera_fb_t *fb = esp_camera_fb_get();
+                if (fb) {
+                    esp_camera_fb_return(fb);
+                    vTaskDelay(pdMS_TO_TICKS(50));
+                }
+            }
         }
     }
     
