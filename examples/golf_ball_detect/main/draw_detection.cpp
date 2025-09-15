@@ -30,9 +30,10 @@ void draw_detection_boxes(dl::image::img_t &img, const std::list<dl::detect::res
         int width = x2 - x1;
         int height = y2 - y1;
         
-        // Skip drawing if width exceeds 160 pixels
-        if (width > 160) {
-            ESP_LOGW(TAG, "Skipping box %d - width too large: %d pixels (> 160)", box_index - 1, width);
+        // width 제한 확인 (이미지 크기에 따라 다름)
+        int width_limit = (img.width > 640) ? 320 : 160;  // 전체보기: 320, ROI: 160
+        if (width > width_limit) {
+            ESP_LOGW(TAG, "Skipping box %d - width too large: %d pixels (> %d)", box_index - 1, width, width_limit);
             continue;
         }
         

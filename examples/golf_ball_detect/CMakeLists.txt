@@ -10,8 +10,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Os")
 
 
 # Generate version info
-set(VERSION_NUMBER 34)
-add_definitions(-DVERSION_STRING="v${VERSION_NUMBER}")
+set(VERSION_NUMBER 38)
+add_definitions(-DVERSION_STRING="v${VERSION_NUMBER}-ROI-VIEW")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(cat_detect)

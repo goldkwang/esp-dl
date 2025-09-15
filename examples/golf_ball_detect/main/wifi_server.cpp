@@ -16,6 +16,14 @@
 #include "camera_init.hpp"
 #include "esp_camera.h"
 
+// ROI 관련 extern 선언
+extern bool roi_enabled;
+extern int roi_offset_x;
+extern int roi_offset_y;  
+extern int roi_width;
+extern int roi_height;
+extern void set_hw_roi_fixed(sensor_t *sensor);
+
 static const char *TAG = "wifi_server";
 
 // WiFi 설정
@@ -235,6 +243,51 @@ static esp_err_t index_handler(httpd_req_t *req)
             background-color: #d32f2f;
         }
         
+        /* Image container for crosshair */
+        .image-container {
+            position: relative;
+            display: inline-block;
+        }
+        
+        /* Crosshair lines */
+        .crosshair-line {
+            position: absolute;
+            background-color: #00ff00;
+            opacity: 0.8;
+            cursor: move;
+            z-index: 10;
+        }
+        .horizontal-line {
+            width: 100%;
+            height: 2px;
+            left: 0;
+        }
+        .vertical-line {
+            width: 2px;
+            height: 100%;
+            top: 0;
+        }
+        
+        /* ROI rectangle */
+        .roi-rect {
+            position: absolute;
+            border: 2px solid #ffff00;
+            background-color: rgba(255, 255, 0, 0.1);
+            pointer-events: none;
+            z-index: 5;
+        }
+        
+        /* Coordinates display */
+        .coord-display {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 2px 5px;
+            font-size: 12px;
+            border-radius: 3px;
+            z-index: 15;
+        }
+        
         /* Button row */
         .button-row {
             margin-top: 10px;
@@ -263,52 +316,37 @@ static esp_err_t index_handler(httpd_req_t *req)
         <div class="main-content">
             <div class="left-panel">
                 <h2>Live Stream <span id="frameCounter" style="color: #2196F3;">(0)</span></h2>
-                <img src="/image.jpg" id="stream" style="width: 100%; height: auto;">
+                <div class="image-container" id="imageContainer">
+                    <img src="/image.jpg" id="stream" style="width: 640px; height: 512px;">
+                    <div class="crosshair-line horizontal-line" id="hLine1" style="top: 262px;"></div>
+                    <div class="crosshair-line horizontal-line" id="hLine2" style="top: 393px;"></div>
+                    <div class="crosshair-line vertical-line" id="vLine1" style="left: 177px;"></div>
+                    <div class="crosshair-line vertical-line" id="vLine2" style="left: 463px;"></div>
+                    <div class="roi-rect" id="roiRect"></div>
+                    <div class="coord-display" id="coordDisplay" style="top: 5px; left: 5px;">사각형: 320x256</div>
+                </div>
+                <div id="roiInfo" style="margin: 10px 0; font-weight: bold;"></div>
+                <p style="margin: 5px 0; color: #666;">초기값 - 너비x높이: 572x262, 시작점: (354, 524) - 새로고침하면 초기화됨</p>
+                <div class="button-row">
+                    <button onclick="saveImage()">Save Image</button>
+                    <button onclick="refreshImage()">Refresh</button>
+                </div>
             </div>
             
             <div class="right-panel">
-                <h2>ROI Settings</h2>
-                <div class="controls" id="roi-controls">
-                    <div class="control-group">
-                        <label>X Offset (↑좌,↓우)</label>
-                        <input type="number" id="xOffset" value="496" min="0" max="800" step="8">
-                        <label style="width: 80px; margin-left: 20px;">Width</label>
-                        <input type="number" id="width" value="480" min="480" max="800" step="8">
-                    </div>
-                    <div class="control-group">
-                        <label>Y Offset (↑상,↓하)</label>
-                        <input type="number" id="yOffset" value="640" min="0" max="864" step="8">
-                        <label style="width: 80px; margin-left: 20px;">Height</label>
-                        <input type="number" id="height" value="160" min="64" max="400" step="8">
-                    </div>
-                </div>
-                <div class="button-row">
-                    <button onclick="saveImage()">Save Image</button>
-                    <button id="applyButton" onclick="applySettings()">Apply</button>
-                    <button onclick="setDefault()">Default</button>
-                </div>
-            </div>
-        </div>
-        
-        <div class="bottom-content">
-            <div class="bottom-left">
+                <h2>ESP32-S3 Camera with OV2640 Sensor</h2>
                 <div class="info">
-                    <p><strong>ESP32-S3 Camera with OV2640 Sensor</strong></p>
-                    <p>Resolution: SXGA (1280x1024)</p>
-                    <p id="roiInfo">ROI: 480x160 @ (496, 640)</p>
-                    <p>Quality: High (JPEG=10)</p>
-                    <p>Stream: MJPEG</p>
-                    <p id="currentSettings">Current: X=496, Y=640, Width=480, Height=160</p>
-                    <p id="defaultSettings">Default: X=496, Y=640, Width=480, Height=160</p>
+                    <p><strong>모드: 전체보기</strong></p>
+                    <p>해상도: SXGA (1280x1024)</p>
+                    <p>품질: High (JPEG=10)</p>
+                    <p>스트림: MJPEG</p>
+                    <p>모델: golf_ball_model.espdl</p>
                     <p id="detectionStatus" style="font-weight: bold; color: #4CAF50;">Detection: Enabled</p>
                     <p id="detectionResult" style="font-weight: bold; color: #4CAF50;"></p>
                 </div>
-            </div>
-            
-            <div class="bottom-right">
-                <div style="position: relative;">
-                    <button onclick="clearLog()" style="position: absolute; right: 10px; top: 10px; background-color: #f44336; padding: 5px 10px; font-size: 12px;">Clear</button>
-                    <div class="log-area" id="logArea">
+                <div style="position: relative; margin-top: 20px;">
+                    <button onclick="clearLog()" style="position: absolute; right: 10px; top: -30px; background-color: #f44336; padding: 5px 10px; font-size: 12px;">Clear</button>
+                    <div class="log-area" id="logArea" style="height: 300px;">
                         <div class="log-entry log-info">System ready. Waiting for commands...</div>
                     </div>
                 </div>
@@ -318,12 +356,13 @@ static esp_err_t index_handler(httpd_req_t *req)
     
     <script>
         // 현재 설정값을 추적하기 위한 변수
-        var roi_offset_x = 496;
-        var roi_offset_y = 640;
-        var roi_width = 480;
-        var roi_height = 160;
+        var roi_offset_x = 0;
+        var roi_offset_y = 0;
+        var roi_width = 1280;
+        var roi_height = 1024;
         var detection_interval;
         var detection_group_color = false;  // 감지 그룹 색상 토글
+        // 전체화면 모드로 고정
         
         function addLog(message, type) {
             var logArea = document.getElementById('logArea');
@@ -440,8 +479,8 @@ static esp_err_t index_handler(httpd_req_t *req)
                         document.getElementById('detectionResult').innerHTML = 
                             'Golf ball detected! Score: ' + (data.score * 100).toFixed(1) + '%';
                         addLog('Position: (' + 
-                               (data.x * roi_width).toFixed(0) + ', ' + 
-                               (data.y * roi_height).toFixed(0) + ') - ' +
+                               (data.x * 1280).toFixed(0) + ', ' + 
+                               (data.y * 1024).toFixed(0) + ') - ' +
                                (data.score * 100).toFixed(1) + '%', 'success');
                     } else {
                         document.getElementById('detectionResult').innerHTML = 'No golf ball detected';
@@ -457,6 +496,8 @@ static esp_err_t index_handler(httpd_req_t *req)
             var img = document.getElementById('stream');
             img.src = '/image.jpg?t=' + new Date().getTime();
         }
+        
+        // ROI 관련 함수 제거 - 전체화면만 사용
         
         // 이미지 저장 함수
         function saveImage() {
@@ -489,9 +530,148 @@ static esp_err_t index_handler(httpd_req_t *req)
                 });
         }
         
+        // 크로스헤어 드래그 기능
+        var isDragging = false;
+        var currentLine = null;
+        
+        function initCrosshair() {
+            var hLine1 = document.getElementById('hLine1');
+            var hLine2 = document.getElementById('hLine2');
+            var vLine1 = document.getElementById('vLine1');
+            var vLine2 = document.getElementById('vLine2');
+            var container = document.getElementById('imageContainer');
+            var coordDisplay = document.getElementById('coordDisplay');
+            var roiRect = document.getElementById('roiRect');
+            
+            // 각 선에 드래그 이벤트 추가
+            [hLine1, hLine2].forEach(function(line, index) {
+                line.addEventListener('mousedown', function(e) {
+                    isDragging = true;
+                    currentLine = 'h' + (index + 1);
+                    e.preventDefault();
+                });
+            });
+            
+            [vLine1, vLine2].forEach(function(line, index) {
+                line.addEventListener('mousedown', function(e) {
+                    isDragging = true;
+                    currentLine = 'v' + (index + 1);
+                    e.preventDefault();
+                });
+            });
+            
+            // 마우스 이동
+            document.addEventListener('mousemove', function(e) {
+                if (!isDragging) return;
+                
+                var rect = container.getBoundingClientRect();
+                
+                if (currentLine.startsWith('h')) {
+                    var y = e.clientY - rect.top;
+                    y = Math.max(0, Math.min(y, 512));
+                    if (currentLine === 'h1') {
+                        hLine1.style.top = y + 'px';
+                    } else {
+                        hLine2.style.top = y + 'px';
+                    }
+                } else if (currentLine.startsWith('v')) {
+                    var x = e.clientX - rect.left;
+                    x = Math.max(0, Math.min(x, 640));
+                    var centerX = 320; // 화면 중앙
+                    
+                    if (currentLine === 'v1') {
+                        vLine1.style.left = x + 'px';
+                        // v2를 중앙 기준 대칭 위치로 이동
+                        var symmetricX = centerX + (centerX - x);
+                        vLine2.style.left = Math.max(0, Math.min(symmetricX, 640)) + 'px';
+                    } else {
+                        vLine2.style.left = x + 'px';
+                        // v1을 중앙 기준 대칭 위치로 이동
+                        var symmetricX = centerX - (x - centerX);
+                        vLine1.style.left = Math.max(0, Math.min(symmetricX, 640)) + 'px';
+                    }
+                }
+                
+                updateRectangle();
+            });
+            
+            // 마우스 버튼 떼기
+            document.addEventListener('mouseup', function() {
+                if (isDragging) {
+                    isDragging = false;
+                    currentLine = null;
+                    logRectPosition();
+                }
+            });
+            
+            // 사각형 업데이트
+            function updateRectangle() {
+                var y1 = parseInt(hLine1.style.top);
+                var y2 = parseInt(hLine2.style.top);
+                var x1 = parseInt(vLine1.style.left);
+                var x2 = parseInt(vLine2.style.left);
+                
+                // 정렬 (작은 값이 먼저 오도록)
+                var top = Math.min(y1, y2);
+                var bottom = Math.max(y1, y2);
+                var left = Math.min(x1, x2);
+                var right = Math.max(x1, x2);
+                
+                // 사각형 그리기
+                roiRect.style.top = top + 'px';
+                roiRect.style.left = left + 'px';
+                roiRect.style.width = (right - left) + 'px';
+                roiRect.style.height = (bottom - top) + 'px';
+                
+                // 실제 좌표 계산 (SXGA: 1280x1024)
+                var realLeft = Math.round(left * 2);
+                var realTop = Math.round(top * 2);
+                var realWidth = Math.round((right - left) * 2);
+                var realHeight = Math.round((bottom - top) * 2);
+                
+                coordDisplay.textContent = '영역: ' + realWidth + 'x' + realHeight + 
+                                         ' @ (' + realLeft + ', ' + realTop + ')';
+                
+                // ROI 정보 표시
+                document.getElementById('roiInfo').innerHTML = 
+                    '너비x높이: <span style="color: #2196F3;">' + realWidth + 'x' + realHeight + '</span>, ' +
+                    '시작점: <span style="color: #2196F3;">(' + realLeft + ', ' + realTop + ')</span>';
+            }
+            
+            // 위치 로그
+            function logRectPosition() {
+                var y1 = parseInt(hLine1.style.top);
+                var y2 = parseInt(hLine2.style.top);
+                var x1 = parseInt(vLine1.style.left);
+                var x2 = parseInt(vLine2.style.left);
+                
+                var top = Math.min(y1, y2);
+                var bottom = Math.max(y1, y2);
+                var left = Math.min(x1, x2);
+                var right = Math.max(x1, x2);
+                
+                var realLeft = Math.round(left * 2);
+                var realTop = Math.round(top * 2);
+                var realWidth = Math.round((right - left) * 2);
+                var realHeight = Math.round((bottom - top) * 2);
+                
+                addLog('ROI 영역 설정: ' + realWidth + 'x' + realHeight + 
+                       ' @ (' + realLeft + ', ' + realTop + ')', 'success');
+            }
+            
+            // 초기 사각형 그리기
+            updateRectangle();
+        }
+        
         // 페이지 로드시 초기화
         window.onload = function() {
-            addLog('Web interface loaded', 'success');
+            addLog('Web interface loaded - Full Frame Mode', 'success');
+            addLog('ROI 설정: 572x262 @ (354, 524)', 'info');
+            addLog('녹색 선을 드래그하여 ROI 영역 조정 가능', 'info');
+            
+            // 크로스헤어 초기화
+            initCrosshair();
+            
             // 감지 결과를 주기적으로 업데이트 (500ms마다)
             detection_interval = setInterval(updateDetection, 500);
             // 이미지도 주기적으로 새로고침 (200ms마다)
@@ -680,10 +860,35 @@ static esp_err_t setROI_handler(httpd_req_t *req)
     
     // URL 쿼리 파라미터 가져오기
     if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        // 모드 확인 (full or roi)
+        if (httpd_query_key_value(query, "mode", value, sizeof(value)) == ESP_OK) {
+            if (strcmp(value, "full") == 0) {
+                // 전체보기 모드
+                roi_enabled = false;
+                sensor_t *s = esp_camera_sensor_get();
+                if (s) {
+                    set_hw_roi_fixed(s);  // 전체 프레임으로 설정
+                    ESP_LOGI(TAG, "Switched to full frame mode");
+                    
+                    // 버퍼 플러시
+                    vTaskDelay(pdMS_TO_TICKS(100));
+                    for (int i = 0; i < 3; i++) {
+                        camera_fb_t *fb = esp_camera_fb_get();
+                        if (fb) {
+                            esp_camera_fb_return(fb);
+                        }
+                        vTaskDelay(pdMS_TO_TICKS(50));
+                    }
+                }
+                httpd_resp_set_type(req, "text/plain");
+                httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+                return httpd_resp_send(req, "OK - Full frame mode", strlen("OK - Full frame mode"));
+            }
+        }
         // X offset
         if (httpd_query_key_value(query, "x", value, sizeof(value)) == ESP_OK) {
             int x = atoi(value);
-            if (x >= 0 && x <= 800) {
+            if (x >= 0 && x <= 1280) {
                 roi_offset_x = x;
             }
         }
@@ -691,7 +896,7 @@ static esp_err_t setROI_handler(httpd_req_t *req)
         // Y offset
         if (httpd_query_key_value(query, "y", value, sizeof(value)) == ESP_OK) {
             int y = atoi(value);
-            if (y >= 0 && y <= 864) {
+            if (y >= 0 && y <= 1024) {
                 roi_offset_y = y;
             }
         }
@@ -699,7 +904,7 @@ static esp_err_t setROI_handler(httpd_req_t *req)
         // Width
         if (httpd_query_key_value(query, "w", value, sizeof(value)) == ESP_OK) {
             int w = atoi(value);
-            if (w >= 480 && w <= 800) {
+            if (w >= 64 && w <= 1280) {
                 roi_width = w;
             }
         }
@@ -707,7 +912,7 @@ static esp_err_t setROI_handler(httpd_req_t *req)
         // Height
         if (httpd_query_key_value(query, "h", value, sizeof(value)) == ESP_OK) {
             int h = atoi(value);
-            if (h >= 64 && h <= 400) {
+            if (h >= 64 && h <= 1024) {
                 roi_height = h;
             }
         }
@@ -719,6 +924,16 @@ static esp_err_t setROI_handler(httpd_req_t *req)
             set_hw_roi_fixed(s);
             ESP_LOGI(TAG, "New ROI settings applied: %dx%d @ (%d, %d)", 
                      roi_width, roi_height, roi_offset_x, roi_offset_y);
+            
+            // 버퍼 플러시
+            vTaskDelay(pdMS_TO_TICKS(100));
+            for (int i = 0; i < 3; i++) {
+                camera_fb_t *fb = esp_camera_fb_get();
+                if (fb) {
+                    esp_camera_fb_return(fb);
+                }
+                vTaskDelay(pdMS_TO_TICKS(50));
+            }
         }
     }
     

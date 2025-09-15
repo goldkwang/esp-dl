@@ -6,12 +6,12 @@
 
 static const char *TAG = "camera_init";
 
-// ROI configuration variables
-bool roi_enabled = true;
-int roi_offset_x = 496;  
-int roi_offset_y = 640;  
-int roi_width = 480;     
-int roi_height = 160;
+// ROI configuration variables - 전체화면 고정
+bool roi_enabled = false;  // 항상 전체화면
+int roi_offset_x = 0;    
+int roi_offset_y = 0;  
+int roi_width = 1280;       
+int roi_height = 1024;
 
 // Camera configuration
 static camera_config_t camera_config = {
@@ -38,8 +38,8 @@ static camera_config_t camera_config = {
     .ledc_channel = LEDC_CHANNEL_0,
     
     .pixel_format = PIXFORMAT_JPEG,
-    .frame_size = FRAMESIZE_SXGA,    // 1280x1024 for ROI
-    .jpeg_quality = 10,
+    .frame_size = FRAMESIZE_SXGA,     // 1280x1024 전체 화면
+    .jpeg_quality = 12,
     .fb_count = 2,
     .fb_location = CAMERA_FB_IN_PSRAM,
     .grab_mode = CAMERA_GRAB_LATEST
@@ -47,8 +47,15 @@ static camera_config_t camera_config = {
 
 // Set hardware ROI
 void set_hw_roi_fixed(sensor_t *sensor) {
-    if (!sensor || !roi_enabled) {
-        ESP_LOGE(TAG, "Sensor null or ROI disabled");
+    if (!sensor) {
+        ESP_LOGE(TAG, "Sensor null");
+        return;
+    }
+    
+    if (!roi_enabled) {
+        ESP_LOGI(TAG, "ROI disabled - using full frame");
+        // 전체 프레임으로 설정
+        sensor->set_framesize(sensor, FRAMESIZE_SXGA);
         return;
     }
     
@@ -64,21 +71,24 @@ void set_hw_roi_fixed(sensor_t *sensor) {
     
     // Set horizontal offset
     sensor->set_reg(sensor, REG_XOFFL, 0xff, hoff & 0xff);
-    sensor->set_reg(sensor, REG_VHYX, 0x03, (hoff >> 8) & 0x03);
     
     // Set vertical offset  
     sensor->set_reg(sensor, REG_YOFFL, 0xff, voff & 0xff);
-    sensor->set_reg(sensor, REG_VHYX, 0xc0, ((voff >> 2) & 0x40) | ((voff >> 4) & 0x80));
     
     // Set ROI size (divide by 4)
     uint16_t hsize = roi_width / 4;
     uint16_t vsize = roi_height / 4;
     
     sensor->set_reg(sensor, REG_HSIZE, 0xff, hsize & 0xff);
-    sensor->set_reg(sensor, REG_VHYX, 0x0c, (hsize >> 6) & 0x0c);
-    
     sensor->set_reg(sensor, REG_VSIZE, 0xff, vsize & 0xff);
-    sensor->set_reg(sensor, REG_VHYX, 0x30, (vsize >> 4) & 0x30);
+    
+    // VHYX register - write once with all bits combined
+    uint8_t vhyx_val = 0;
+    vhyx_val |= (hoff >> 8) & 0x03;     // bits 1:0 - horizontal offset high
+    vhyx_val |= (hsize >> 6) & 0x0c;    // bits 3:2 - horizontal size high  
+    vhyx_val |= (vsize >> 4) & 0x30;    // bits 5:4 - vertical size high
+    vhyx_val |= ((voff >> 2) & 0x40) | ((voff >> 4) & 0x80);  // bits 7:6 - vertical offset high
+    sensor->set_reg(sensor, REG_VHYX, 0xff, vhyx_val);
     
     // Zoom window size
     sensor->set_reg(sensor, REG_ZMOW, 0xff, (roi_width / 4) & 0xff);
@@ -88,6 +98,8 @@ void set_hw_roi_fixed(sensor_t *sensor) {
                     (((roi_width / 4) >> 4) & 0xf0));
     
     ESP_LOGI(TAG, "HW ROI configured successfully");
+    ESP_LOGI(TAG, "Registers - HOFF:%d VOFF:%d HSIZE:%d VSIZE:%d VHYX:0x%02X", 
+             hoff, voff, hsize, vsize, vhyx_val);
 }
 
 // Initialize camera
@@ -150,21 +162,10 @@ esp_err_t camera_init() {
                 }
             }
             
-            // Apply initial ROI
-            roi_enabled = true;
-            set_hw_roi_fixed(s);
+            // 초기에는 전체화면 모드
+            roi_enabled = false;
             
-            // Flush buffers after ROI
-            vTaskDelay(pdMS_TO_TICKS(200));
-            for (int i = 0; i < 3; i++) {
-                camera_fb_t *fb = esp_camera_fb_get();
-                if (fb) {
-                    esp_camera_fb_return(fb);
-                    vTaskDelay(pdMS_TO_TICKS(50));
-                }
-            }
-            
-            ESP_LOGI(TAG, "OV2640 camera initialized with ROI");
+            ESP_LOGI(TAG, "OV2640 camera initialized - Full Frame Mode");
         }
     } else {
         ESP_LOGE(TAG, "Failed to get camera sensor");

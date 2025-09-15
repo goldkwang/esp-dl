@@ -28,15 +28,20 @@ static void detection_task(void *pvParameters) {
             }
             
             // JPEG를 RGB888로 변환
-            uint8_t *rgb_buf = (uint8_t *)heap_caps_malloc(roi_width * roi_height * 3, MALLOC_CAP_SPIRAM);
+            // ROI 모드에서는 실제 ROI 크기, 전체보기에서는 스케일된 크기
+            int process_width = roi_enabled ? roi_width : 640;
+            int process_height = roi_enabled ? roi_height : 512;
+            
+            uint8_t *rgb_buf = (uint8_t *)heap_caps_malloc(process_width * process_height * 3, MALLOC_CAP_SPIRAM);
             if (rgb_buf) {
                 // RGB565로 먼저 변환
-                uint8_t *rgb565_buf = (uint8_t *)heap_caps_malloc(roi_width * roi_height * 2, MALLOC_CAP_SPIRAM);
+                uint8_t *rgb565_buf = (uint8_t *)heap_caps_malloc(process_width * process_height * 2, MALLOC_CAP_SPIRAM);
                 if (rgb565_buf) {
-                    bool converted = jpg2rgb565(fb->buf, fb->len, rgb565_buf, JPG_SCALE_NONE);
+                    bool converted = jpg2rgb565(fb->buf, fb->len, rgb565_buf, 
+                                               roi_enabled ? JPG_SCALE_NONE : JPG_SCALE_2X);
                     if (converted) {
                         // RGB565를 RGB888로 변환
-                        for (int i = 0; i < roi_width * roi_height; i++) {
+                        for (int i = 0; i < process_width * process_height; i++) {
                             uint16_t pixel = ((uint16_t*)rgb565_buf)[i];
                             int idx = i * 3;
                             uint8_t r = ((pixel >> 11) & 0x1F);
@@ -50,8 +55,8 @@ static void detection_task(void *pvParameters) {
                         // dl::image::img_t 구조체 생성
                         dl::image::img_t img = {
                             .data = rgb_buf,
-                            .width = (uint16_t)roi_width,
-                            .height = (uint16_t)roi_height,
+                            .width = (uint16_t)process_width,
+                            .height = (uint16_t)process_height,
                             .pix_type = dl::image::DL_IMAGE_PIX_TYPE_RGB888
                         };
                         
@@ -64,12 +69,12 @@ static void detection_task(void *pvParameters) {
                             // 첫 번째 감지만 기존 함수로 설정 (호환성 유지)
                             const auto &res = detect_results.front();
                             float score = res.score;
-                            float x = (res.box[0] + res.box[2]) / 2.0f / roi_width;
-                            float y = (res.box[1] + res.box[3]) / 2.0f / roi_height;
+                            float x = (res.box[0] + res.box[2]) / 2.0f / process_width;
+                            float y = (res.box[1] + res.box[3]) / 2.0f / process_height;
                             set_detection_result(true, score, x, y);
                             float box_height = res.box[3] - res.box[1];
                             ESP_LOGI(TAG, "Golf ball detected: %.2f%% at (%.1f, %.1f) Height=%.1f",
-                                     score * 100, x * roi_width, y * roi_height, box_height);
+                                     score * 100, x * process_width, y * process_height, box_height);
                             
                             // 모든 감지 결과 저장 (width <= 160인 것만)
                             detection_info detections[10];
@@ -79,10 +84,11 @@ static void detection_task(void *pvParameters) {
                                 float det_width = det.box[2] - det.box[0];
                                 float det_height = det.box[3] - det.box[1];
                                 
-                                // width > 160이면 콘솔에만 로그 출력
-                                if (det_width > 160) {
-                                    ESP_LOGW(TAG, "Invalid detection - width too large: %.1f pixels (> 160), height=%.1f", 
-                                             det_width, det_height);
+                                // width 제한 (ROI 모드: 160, 전체보기: 320)
+                                int width_limit = roi_enabled ? 160 : 320;
+                                if (det_width > width_limit) {
+                                    ESP_LOGW(TAG, "Invalid detection - width too large: %.1f pixels (> %d), height=%.1f", 
+                                             det_width, det_height, width_limit);
                                     continue;  // 웹에는 전달하지 않음
                                 }
                                 
@@ -108,8 +114,8 @@ static void detection_task(void *pvParameters) {
                         // 검출 박스 그리기
                         draw_detection_boxes(img, detect_results);
                         
-                        // JPEG로 다시 인코딩
-                        dl::image::jpeg_img_t jpeg_result = dl::image::sw_encode_jpeg(img, 0, 85);
+                        // JPEG로 다시 인코딩 (품질을 낮춰서 메모리 절약)
+                        dl::image::jpeg_img_t jpeg_result = dl::image::sw_encode_jpeg(img, 0, 60);
                         if (jpeg_result.data) {
                             uint8_t *buffer_copy = (uint8_t*)malloc(jpeg_result.data_len);
                             if (buffer_copy) {
