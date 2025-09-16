@@ -327,6 +327,10 @@ static esp_err_t index_handler(httpd_req_t *req)
                 </div>
                 <div id="roiInfo" style="margin: 10px 0; font-weight: bold;"></div>
                 <p style="margin: 5px 0; color: #666;">초기값 - 너비x높이: 572x262, 시작점: (354, 524) - 새로고침하면 초기화됨</p>
+                <div id="possibleValues" style="margin: 10px 0; padding: 10px; background-color: #f0f0f0; border-radius: 5px; font-size: 14px;">
+                    <div id="widthValues" style="margin: 5px 0; color: #2196F3;"></div>
+                    <div id="heightValues" style="margin: 5px 0; color: #4CAF50;"></div>
+                </div>
                 <div class="button-row">
                     <button onclick="saveImage()">Save Image</button>
                     <button onclick="refreshImage()">Refresh</button>
@@ -593,6 +597,7 @@ static esp_err_t index_handler(httpd_req_t *req)
                 }
                 
                 updateRectangle();
+                updatePossibleValues();  // 가능한 8의 배수 값 업데이트
             });
             
             // 마우스 버튼 떼기
@@ -659,8 +664,77 @@ static esp_err_t index_handler(httpd_req_t *req)
                        ' @ (' + realLeft + ', ' + realTop + ')', 'success');
             }
             
+            // 가능한 8의 배수 값들 업데이트
+            function updatePossibleValues() {
+                var centerX = 320; // 화면 중앙 (640/2)
+                var x1 = parseInt(vLine1.style.left);
+                var x2 = parseInt(vLine2.style.left);
+                var y1 = parseInt(hLine1.style.top);
+                var y2 = parseInt(hLine2.style.top);
+                
+                // 가로 너비 계산 (대칭이므로 센터에서의 거리로 계산)
+                var distFromCenter = Math.abs(x1 - centerX);
+                var currentWidth = distFromCenter * 2 * 2; // *2는 실제 좌표 변환
+                
+                // 가능한 가로 8의 배수 값들 (센터 기준 대칭)
+                var widthValues = [];
+                for (var dist = 4; dist <= 320; dist += 4) { // 4픽셀 단위 (실제로는 8픽셀)
+                    var width = dist * 2 * 2; // 거리 * 2(대칭) * 2(실제좌표)
+                    if (width >= 64 && width <= 1280 && width % 8 === 0) {
+                        widthValues.push(width);
+                    }
+                }
+                
+                // 현재 세로 위치에서 가능한 높이 8의 배수 값들
+                var minY = Math.min(y1, y2);
+                var maxY = Math.max(y1, y2);
+                var currentHeight = (maxY - minY) * 2; // 실제 좌표로 변환
+                
+                var heightValues = [];
+                // 아래선 기준으로 위쪽 가능한 값들
+                if (currentLine && currentLine.startsWith('h')) {
+                    for (var h = 8; h <= 1024; h += 8) {
+                        var pixelHeight = h / 2; // 화면 픽셀로 변환
+                        if (currentLine === 'h2') { // 아래선을 움직이는 경우
+                            var newY1 = maxY - pixelHeight;
+                            if (newY1 >= 0 && newY1 <= 512) {
+                                heightValues.push(h);
+                            }
+                        } else { // 윗선을 움직이는 경우
+                            var newY2 = minY + pixelHeight;
+                            if (newY2 >= 0 && newY2 <= 512) {
+                                heightValues.push(h);
+                            }
+                        }
+                    }
+                }
+                
+                // 가로 값 표시 (10개씩 표시)
+                var widthText = '가로 8의 배수 (중앙 대칭): ';
+                var selectedWidths = widthValues.filter(function(w, i) {
+                    return Math.abs(w - currentWidth) < 100 || i % 10 === 0;
+                }).slice(0, 10);
+                widthText += selectedWidths.join(', ') + '...';
+                document.getElementById('widthValues').textContent = widthText;
+                
+                // 세로 값 표시
+                if (heightValues.length > 0) {
+                    var heightText = currentLine === 'h2' ? 
+                        '세로 8의 배수 (아래선 기준): ' : 
+                        '세로 8의 배수 (윗선 기준): ';
+                    var selectedHeights = heightValues.filter(function(h, i) {
+                        return Math.abs(h - currentHeight) < 100 || i % 10 === 0;
+                    }).slice(0, 10);
+                    heightText += selectedHeights.join(', ') + '...';
+                    document.getElementById('heightValues').textContent = heightText;
+                } else {
+                    document.getElementById('heightValues').textContent = '세로선을 움직여서 높이 조정';
+                }
+            }
+            
             // 초기 사각형 그리기
             updateRectangle();
+            updatePossibleValues();
         }
         
         // 페이지 로드시 초기화
