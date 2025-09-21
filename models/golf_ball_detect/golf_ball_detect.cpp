@@ -47,7 +47,7 @@ GolfBallDetect::GolfBallDetect(model_type_t model_type)
     switch (model_type) {
     case GOLF_BALL_99_4_MAP:
 #if CONFIG_FLASH_GOLF_BALL_99_4_MAP || CONFIG_GOLF_BALL_DETECT_MODEL_IN_SDCARD
-        m_model = new golf_ball_detect::ESPDet("golf_ball_99_4_mAP.espdl");
+        m_model = new golf_ball_detect::ESPDet("golf_ball_model.espdl");
 #else
         ESP_LOGE("golf_ball_detect", "golf_ball_99_4_mAP is not selected in menuconfig.");
 #endif
